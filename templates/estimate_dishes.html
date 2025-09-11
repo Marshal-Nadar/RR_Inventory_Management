@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-wrapper">
+    <div class="content">
+        <div class="page-header">
+            <div class="page-title">
+                <h4>Estimates List</h4>
+            </div>
+        </div>
+
+        <!-- Date Input Form -->
+        <form method="POST" action="{{ url_for('estimate_dishes') }}">
+            <div class="card">
+                <div class="card-body">
+                    <label for="date">Select Date:</label>
+                    <input type="date" id="date" name="date" value="{{ selected_date if selected_date else '' }}">
+                    <button type="submit" class="btn btn-primary">Submit</button>
+                </div>
+            </div>
+        </form>
+
+        <div class="card">
+            <div class="card-body">
+                <div class="table-top">
+                    <div class="search-set">
+                        <div class="search-input">
+                            <a class="btn btn-searchset"><img src="../static/img/icons/search-white.svg" alt="img"></a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table datanew">
+                        <thead>
+                            <tr>
+                                <th>Dish Name</th>
+                                <th>Estimated Quantity</th>
+                                <th>Raw Materials</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for estimate in estimates %}
+                            <tr>
+                                <td>{{ estimate.dish_name }}</td>
+                                <td>{{ estimate.estimate }}</td>
+                                <td>
+                                    <ul class="list-unstyled">
+                                        {% for material in estimate.raw_materials %}
+                                        <li>
+                                            {{ material.name }} - {{ material.quantity_used }} {{ material.metric }}
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="../static/plugins/select2/js/select2.min.js"></script>
+<script src="../static/plugins/sweetalert/sweetalert2.all.min.js"></script>
+<script src="../static/plugins/sweetalert/sweetalerts.min.js"></script>
+{% endblock %}

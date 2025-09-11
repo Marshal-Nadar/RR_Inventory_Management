@@ -1,0 +1,410 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-wrapper">
+    <div class="content">
+        <div class="page-header">
+            <div class="page-title">
+                <h4>Transfer Raw Material</h4>
+                <h6>Transfer raw materials from Storage Room to Kitchen or Restaurant</h6>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="alert-container">
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="/transfer_raw_material">
+            <div class="card">
+                <div class="card-body">
+                    <!-- First Row -->
+                    <div class="row">
+                        <!-- Transfer Date -->
+                        <div class="col-lg-3 col-sm-6 col-12">
+                            <div class="form-group">
+                                <label>Transfer Date</label>
+                                <input type="date" name="transfer_date" class="form-control" value="{{ today_date }}"
+                                    required>
+                            </div>
+                        </div>
+                        <!-- Storage Room (Transfer From) -->
+                        <div class="col-lg-3 col-sm-6 col-12">
+                            <div class="form-group">
+                                <label>Transfer From</label>
+                                <select name="storageroom" class="form-control" required>
+                                    <option value="" disabled selected>Select Storage Room</option>
+                                    {% for room in storage_rooms %}
+                                    <option value="{{ room.id }}">{{ room.storageroomname }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Destination -->
+                        <div class="col-lg-3 col-sm-6 col-12">
+                            <div class="form-group">
+                                <label>Destination Type</label>
+                                <select name="destination_type" class="form-control" id="destination_type" required>
+                                    <option value="kitchen">Kitchen</option>
+                                    <option value="restaurant">Restaurant</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Destination Name based on selection -->
+                        <div class="col-lg-3 col-sm-6 col-12">
+                            <div class="form-group">
+                                <label>Destination Name</label>
+                                <select name="destination_name" class="form-control" id="destination_name" required>
+                                    <!-- Dynamic options will be added here -->
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+
+                    <!-- Raw Material Rows -->
+                    <div id="raw-material-container">
+                        <!-- First Row with Headings -->
+                        <div class="row align-items-center raw-material-row">
+                            <div class="col-lg-10 col-sm-12 col-12">
+                                <div class="form-group row">
+                                    <!-- Labels -->
+                                    <div class="col-lg-3">
+                                        <label>Raw Material</label>
+                                        <input list="raw_materials" name="raw_material[]"
+                                            class="form-control raw-material-input" placeholder="Select Raw Material"
+                                            required>
+                                        <datalist id="raw_materials">
+                                            {% for material in raw_materials %}
+                                            <option value="{{ material.name }}" data-id="{{ material.id }}"
+                                                data-metric="{{ material.metric }}">
+                                                {% endfor %}
+                                        </datalist>
+                                        <input type="hidden" class="raw-material-id" name="raw_material_id[]" />
+                                    </div>
+                                    <!-- Currently Available Quantity -->
+                                    <div class="col-lg-2">
+                                        <label>Available Quantity</label>
+                                        <input type="number" name="available_quantity" class="form-control" step="0.01"
+                                            value="" required readonly>
+                                    </div>
+                                    <div class="col-lg-2">
+                                        <label>Transfer Quantity</label>
+                                        <input type="number" name="quantity[]" class="form-control" step="0.01"
+                                            placeholder="Enter Quantity" min="0.01" required>
+                                    </div>
+                                    <div class="col-lg-2">
+                                        <label>Metric</label>
+                                        <select name="metric[]" class="form-control metric-dropdown" readonly>
+                                            <option value="kg">Kilogram (kg)</option>
+                                            <option value="grams">Grams</option>
+                                            <option value="liter">Liter</option>
+                                            <option value="ml">Milliliter (ml)</option>
+                                            <option value="unit">Unit</option>
+                                        </select>
+                                    </div>
+                                    <!-- Hidden input to store metric value for submission -->
+                                    <input type="hidden" class="hidden-metric-input" name="metric[]">
+                                </div>
+                            </div>
+                            <div class="col-lg-2 d-flex align-items-center">
+                                <button type="button" class="btn btn-success btn-add-row">+</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Submit Buttons -->
+                    <div class="row mt-3">
+                        <div class="col-lg-12">
+                            <button type="submit" class="btn btn-submit me-2" id="submit-btn">
+                                Submit
+                            </button>
+                            <span id="loading-text"
+                                style="display: none; font-weight: bold; color: blue;">Processing...</span>
+                            <a href="/" class="btn btn-cancel">Cancel</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const container = document.getElementById('raw-material-container');
+        const destinationTypeSelect = document.getElementById('destination_type');
+        const destinationNameSelect = document.getElementById('destination_name');
+        const kitchens = {{ kitchens | tojson
+    }};  // Passing kitchens data
+    const restaurants = {{ restaurants | tojson }};  // Passing restaurants data
+
+    function updateDestinationNameOptions() {
+        const selectedType = destinationTypeSelect.value;
+        let options = [];
+
+        if (selectedType === 'kitchen') {
+            options = kitchens;
+        } else if (selectedType === 'restaurant') {
+            options = restaurants;
+        }
+
+        destinationNameSelect.innerHTML = ''; // Clear existing options
+
+        const defaultOption = document.createElement('option');
+        defaultOption.text = 'Select Destination';
+        defaultOption.disabled = true;
+        defaultOption.selected = true;
+        defaultOption.value = ""; // Ensure empty value to trigger required
+        destinationNameSelect.appendChild(defaultOption);
+
+        options.forEach(option => {
+            const newOption = document.createElement('option');
+            newOption.value = option.id;
+            newOption.textContent = option[`${selectedType}name`];  // kitchenname or restaurantname
+            destinationNameSelect.appendChild(newOption);
+        });
+
+        // Ensure `required` is properly set
+        destinationNameSelect.setAttribute('required', 'true');
+    }
+
+
+    // Event listener for Destination Type change
+    destinationTypeSelect.addEventListener('change', updateDestinationNameOptions);
+
+    // Initial update of Destination Name options
+    updateDestinationNameOptions();
+
+    // Add new row
+    container.addEventListener('click', function (e) {
+        if (e.target.classList.contains('btn-add-row')) {
+            const newRow = e.target.closest('.raw-material-row').cloneNode(true);
+            newRow.querySelectorAll('input, select').forEach(input => input.value = ''); // Clear inputs
+
+            // Remove any existing 'X' buttons before cloning
+            const existingRemoveBtn = newRow.querySelector('.btn-remove-row');
+            if (existingRemoveBtn) {
+                existingRemoveBtn.remove();
+            }
+
+            // Ensure both + and X buttons for the new row
+            const addBtn = newRow.querySelector('.btn-add-row');
+            addBtn.textContent = '+';
+            addBtn.classList.replace('btn-remove-row', 'btn-add-row');
+            addBtn.classList.replace('btn-danger', 'btn-success');
+
+            // Add an X button
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.textContent = 'X';
+            removeBtn.classList.add('btn', 'btn-danger', 'btn-remove-row');
+            newRow.querySelector('.d-flex').appendChild(removeBtn);
+
+            // Hide labels for subsequent rows
+            const labels = newRow.querySelectorAll('label');
+            labels.forEach(label => label.style.display = 'none');
+
+            // Append new row to the container
+            container.appendChild(newRow);
+
+            // Focus the raw material input field in the new row
+            const rawMaterialInput = newRow.querySelector('input[name="raw_material[]"]');
+            if (rawMaterialInput) {
+                rawMaterialInput.focus();
+            }
+
+            // Re-render the metric dropdown for the new row
+            const metricDropdown = newRow.querySelector('.metric-dropdown');
+            const rawMaterialInputField = newRow.querySelector('input[name="raw_material[]"]');
+
+            if (metricDropdown && rawMaterialInputField) {
+                metricDropdown.innerHTML = `
+                    <option value="kg">Kilogram (kg)</option>
+                    <option value="grams">Grams</option>
+                    <option value="liter">Liter</option>
+                    <option value="ml">Milliliter (ml)</option>
+                    <option value="unit">Unit</option>
+                `;
+            }
+        }
+    });
+
+    // Remove row
+    container.addEventListener('click', function (e) {
+        if (e.target.classList.contains('btn-remove-row')) {
+            e.target.closest('.raw-material-row').remove();
+        }
+    });
+    // Handle Enter Key
+    container.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault(); // Prevent form submission
+            const addBtn = e.target.closest('.raw-material-row').querySelector('.btn-add-row');
+            if (addBtn) addBtn.click();
+        }
+    });
+    // Auto-select metric based on raw material
+    container.addEventListener('input', function (e) {
+        if (e.target.classList.contains('raw-material-input')) {
+            const selectedMaterial = e.target.value;
+            const dataList = document.getElementById('raw_materials');
+            const options = Array.from(dataList.options);
+            const matchingOption = options.find(option => option.value === selectedMaterial);
+
+            if (matchingOption) {
+                const metric = matchingOption.dataset.metric;
+                const metricDropdown = e.target.closest('.raw-material-row').querySelector('.metric-dropdown');
+                metricDropdown.value = metric;
+            }
+        }
+    });
+    });
+    document.addEventListener('DOMContentLoaded', function () {
+        const container = document.getElementById('raw-material-container');
+        const storageroomSelect = document.querySelector('select[name="storageroom"]');
+
+        // Fetch available quantity based on raw_material_id
+        async function fetchAvailableQuantity(storageroomId, rawMaterialId) {
+            try {
+                const response = await fetch(`/get_available_quantity?storageroom_id=${storageroomId}&raw_material_id=${rawMaterialId}`);
+
+                if (!response.ok) throw new Error('Failed to fetch available quantity');
+                const data = await response.json();
+                // alert(data)
+                // alert(data.available_quantity)
+                return data.available_quantity || 0;
+            } catch (error) {
+                console.error('Error fetching available quantity:', error);
+                return 0;
+            }
+        }
+
+        // Update available quantity and add validation for transfer quantity
+        async function updateAvailableQuantity(row, storageroomId, rawMaterialId) {
+            const availableQuantityInput = row.querySelector('input[name="available_quantity"]');
+            const transferQuantityInput = row.querySelector('input[name="quantity[]"]');
+
+            const availableQuantity = await fetchAvailableQuantity(storageroomId, rawMaterialId);
+            availableQuantityInput.value = availableQuantity.toFixed(2);
+
+            // Update max attribute for transfer quantity
+            transferQuantityInput.setAttribute('max', availableQuantity);
+
+            // Remove any previous event listeners to avoid conflicts
+            transferQuantityInput.replaceWith(transferQuantityInput.cloneNode(true));
+            const newTransferQuantityInput = row.querySelector('input[name="quantity[]"]');
+
+            // Add new event listener with updated max limit
+            newTransferQuantityInput.addEventListener('input', function () {
+                if (parseFloat(this.value) > availableQuantity) {
+                    alert('Transfer Quantity cannot exceed Available Quantity.');
+                    this.value = availableQuantity.toFixed(2);
+                }
+            });
+        }
+
+        container.addEventListener('input', function (e) {
+            if (e.target.classList.contains('raw-material-input')) {
+                const row = e.target.closest('.raw-material-row');
+                const storageroomId = storageroomSelect.value;
+                const rawMaterialName = e.target.value;
+
+                const datalist = document.getElementById('raw_materials');
+                const option = Array.from(datalist.options).find(opt => opt.value === rawMaterialName);
+
+                if (option) {
+                    const rawMaterialId = option.getAttribute('data-id');
+                    const hiddenInput = row.querySelector('.raw-material-id');
+                    hiddenInput.value = rawMaterialId;
+                    // alert(rawMaterialId)
+                    if (storageroomId && rawMaterialId) {
+                        updateAvailableQuantity(row, storageroomId, rawMaterialId);
+                    }
+                }
+            }
+        });
+    });
+    document.addEventListener('DOMContentLoaded', function () {
+        const container = document.getElementById('raw-material-container');
+        const form = document.querySelector('form');
+        const rawMaterialsDataList = document.getElementById('raw_materials');
+
+        // Validation before form submission
+        form.addEventListener('submit', function (e) {
+            const rawMaterialInputs = container.querySelectorAll('.raw-material-input');
+            let isValid = true;
+
+            rawMaterialInputs.forEach(input => {
+                const rawMaterialName = input.value;
+                const isRawMaterialAvailable = Array.from(rawMaterialsDataList.options).some(
+                    option => option.value === rawMaterialName
+                );
+
+                if (!isRawMaterialAvailable) {
+                    isValid = false;
+                    alert(`Raw material "${rawMaterialName}" is not available.`);
+                    input.focus();
+                }
+            });
+
+            if (!isValid) {
+                e.preventDefault(); // Prevent form submission if validation fails
+            }
+        });
+
+        // Auto-select metric only AFTER the user selects a raw material from the suggestions
+        container.addEventListener('change', function (e) {
+            if (e.target.classList.contains('raw-material-input')) {
+                const selectedMaterial = e.target.value;
+                const options = Array.from(rawMaterialsDataList.options);
+                const matchingOption = options.find(option => option.value === selectedMaterial);
+
+                const metricDropdown = e.target.closest('.raw-material-row').querySelector('.metric-dropdown');
+                const hiddenMetricInput = e.target.closest('.raw-material-row').querySelector('.hidden-metric-input');
+
+                if (matchingOption) {
+                    const metric = matchingOption.dataset.metric;
+                    metricDropdown.value = metric;
+
+                    // Disable the dropdown so the user cannot change it
+                    metricDropdown.setAttribute('disabled', true);
+
+                    // Set the hidden input value for form submission
+                    hiddenMetricInput.value = metric;
+                } else {
+                    // Allow the user to enter a new material and choose the metric manually
+                    metricDropdown.value = '';
+                    metricDropdown.removeAttribute('disabled');
+                    hiddenMetricInput.value = '';
+                }
+            }
+        });
+    });
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.querySelector('form');
+        const submitButton = document.getElementById('submit-btn');
+        const loadingText = document.getElementById('loading-text');
+
+        form.addEventListener('submit', function (e) {
+            // Disable the button to prevent double-click
+            submitButton.disabled = true;
+            submitButton.textContent = "Submitting..."; // Change button text
+            loadingText.style.display = "inline"; // Show "Processing..." text
+
+            // Allow form submission to proceed
+            setTimeout(() => {
+                submitButton.disabled = false; // Re-enable if needed (for unexpected issues)
+                submitButton.textContent = "Submit"; // Reset button text
+            }, 60000); // Just in case form submission fails, re-enable after 60s
+        });
+    });
+
+</script>
+{% endblock %}

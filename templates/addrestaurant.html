@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-wrapper">
+    <div class="content">
+        <div class="page-header">
+            <div class="page-title">
+                <h4>Add New Restaurant</h4>
+            </div>
+        </div>
+
+        <form action="/addrestaurant" method="POST">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-lg-6 col-sm-6 col-12">
+                            <div class="form-group">
+                                <label>Restaurant Name</label>
+                                <input type="text" name="restaurant_name" class="form-control" required>
+                            </div>
+                        </div>
+                        <div class="col-lg-12">
+                            <div class="form-group">
+                                <label>Address</label>
+                                <textarea name="address" class="form-control" required></textarea>
+                            </div>
+                        </div>
+                        <div>
+                            {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                            <ul class="flash-messages">
+                                {% for category, message in messages %}
+                                <li class="{{ category }}"><b>**{{ message }}</b></li>
+                                {% endfor %}
+                            </ul>
+                            {% endif %}
+                            {% endwith %}
+                        </div>
+                        <div class="col-lg-12">
+                            <button type="submit" class="btn btn-submit me-2">Submit</button>
+                            <a href="/restaurantlist" class="btn btn-cancel">Cancel</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="../static/plugins/select2/js/select2.min.js"></script>
+<script src="../static/plugins/sweetalert/sweetalert2.all.min.js"></script>
+<script src="../static/plugins/sweetalert/sweetalerts.min.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        var restaurantInput = document.querySelector('input[name="restaurant_name"]');
+        var addressInput = document.querySelector('textarea[name="address"]');
+
+        restaurantInput.addEventListener('input', function () {
+            this.value = this.value.toUpperCase();
+        });
+
+        document.querySelector('form').addEventListener('submit', function (event) {
+            if (restaurantInput.value.trim() === '' || addressInput.value.trim() === '') {
+                alert('Restaurant Name and Address cannot be empty or just spaces.');
+                event.preventDefault(); // Prevent the form from being submitted
+            }
+        });
+    });
+</script>
+{% endblock %}

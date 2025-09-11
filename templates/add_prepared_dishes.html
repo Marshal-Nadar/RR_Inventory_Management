@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-wrapper">
+    <div class="content">
+        <div class="page-header">
+            <div class="page-title">
+                <h4>Add Prepared Dishes</h4>
+                <h6>Track prepared dishes in the central kitchen</h6>
+            </div>
+        </div>
+        <form method="POST" action="/add_prepared_dishes">
+            <!-- First row: Prepared in kitchen and prepared on -->
+            <div class="row align-items-center mb-3">
+                <div class="col-md-6">
+                    <label>Prepared In Kitchen</label>
+                    <input type="text" id="kitchen-name-input" class="form-control" list="kitchens-list"
+                        placeholder="Search or add a kitchen..." required>
+                    <datalist id="kitchens-list">
+                        {% for kitchen in kitchens %}
+                        <option data-id="{{ kitchen['id'] }}" value="{{ kitchen['kitchenname'] }}"></option>
+                        {% endfor %}
+                    </datalist>
+                    <!-- Hidden input to store the selected kitchen ID -->
+                    <input type="hidden" name="kitchen_id" id="kitchen-id-input" required>
+                </div>
+                <div class="col-md-6">
+                    <label>Prepared On</label>
+                    <input type="date" name="prepared_on" class="form-control" value="{{ todays_date }}" required>
+                </div>
+            </div>
+
+            <!-- Second row: Dish category, dish name, prepared quantity -->
+            <div id="dishes-container">
+                <div class="row align-items-center dish-row mb-3">
+                    <div class="col-md-3">
+                        <label>Dish Category</label>
+                        <input type="text" name="dish_categories[]" class="form-control" list="categories-list"
+                            placeholder="Search a category..." required>
+                        <datalist id="categories-list">
+                            {% for category in dish_categories %}
+                            <option value="{{ category['category'] }}"></option>
+                            {% endfor %}
+                        </datalist>
+                    </div>
+                    <div class="col-md-3">
+                        <label>Dish Name</label>
+                        <input type="text" name="dish_names[]" class="form-control" list="dish-list-0"
+                            placeholder="Search a dish..." required>
+                        <datalist id="dish-list-0"></datalist>
+                    </div>
+                    <div class="col-md-3">
+                        <label>Prepared Quantity</label>
+                        <input type="number" name="prepared_quantities[]" class="form-control" step="1" min="1"
+                            required>
+                    </div>
+                    <div class="col-md-3 d-flex justify-content-between align-items-end">
+                        <button type="button" class="btn btn-success add-dish-row">+</button>
+                        <button type="button" class="btn btn-danger delete-dish-row">x</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Flash Messages -->
+            <div>
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                <ul class="flash-messages">
+                    {% for category, message in messages %}
+                    <li class="{{ category }}"><b>**{{ message }}</b></li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+                {% endwith %}
+            </div>
+
+            <!-- Submit Button -->
+            <button type="submit" class="btn btn-primary mt-3">Submit</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Dish mapping from the backend
+    const dishMapping = {{ dish_mapping | tojson }};
+
+    // Add and remove rows in the dishes section
+    document.getElementById('dishes-container').addEventListener('click', function (event) {
+        if (event.target.classList.contains('add-dish-row')) {
+            const newRow = addNewDishRow();
+            // Ensure the "+" button is removed from the previous row
+            updateRowButtons();
+            newRow.querySelector('input[name="dish_categories[]"]').focus();
+        }
+
+        if (event.target.classList.contains('delete-dish-row')) {
+            const row = event.target.closest('.dish-row');
+            if (row) row.remove();
+            updateRowButtons();
+        }
+    });
+
+    // Prevent form submission and add a new row on Enter key press
+    document.querySelector('form').addEventListener('keypress', function (event) {
+        if (event.target.closest('#dishes-container') && event.key === 'Enter') {
+            event.preventDefault(); // Prevent form submission
+            const newRow = addNewDishRow();
+            updateRowButtons();
+            newRow.querySelector('input[name="dish_categories[]"]').focus();
+        }
+    });
+
+    // Function to add a new dish row
+    function addNewDishRow() {
+        const container = document.getElementById('dishes-container');
+        const rowCount = document.querySelectorAll('.dish-row').length;
+        const newRowHTML = `
+            <div class="row align-items-center dish-row mb-3">
+                <div class="col-md-3">
+                    <input type="text" name="dish_categories[]" class="form-control" list="categories-list"
+                        placeholder="Search a category..." required>
+                    <datalist id="categories-list">
+                        {% for category in dish_categories %}
+                        <option value="{{ category['category'] }}"></option>
+                        {% endfor %}
+                    </datalist>
+                </div>
+                <div class="col-md-3">
+                    <input type="text" name="dish_names[]" class="form-control" list="dish-list-${rowCount}"
+                        placeholder="Search a dish..." required>
+                    <datalist id="dish-list-${rowCount}"></datalist>
+                </div>
+                <div class="col-md-3">
+                    <input type="number" name="prepared_quantities[]" class="form-control" step="1" min="1" required>
+                </div>
+                <div class="col-md-3 d-flex justify-content-between align-items-end">
+                    <button type="button" class="btn btn-success add-dish-row">+</button>
+                    <button type="button" class="btn btn-danger delete-dish-row">x</button>
+                </div>
+            </div>`;
+        container.insertAdjacentHTML('beforeend', newRowHTML);
+        return container.lastElementChild; // Return the newly added row
+    }
+
+    // Update buttons to show "+" only for the last row, "x" from the third row onwards
+    function updateRowButtons() {
+        const rows = document.querySelectorAll('.dish-row');
+        rows.forEach((row, index) => {
+            const addButton = row.querySelector('.add-dish-row');
+            const deleteButton = row.querySelector('.delete-dish-row');
+            if (index === rows.length - 1) {
+                addButton.style.display = 'inline-block';
+            } else {
+                addButton.style.display = 'none';
+            }
+            deleteButton.style.display = index > 0 ? 'inline-block' : 'none';
+        });
+    }
+
+    // Handle dish category selection and update dish names
+    document.getElementById('dishes-container').addEventListener('input', function (event) {
+        if (event.target.name === "dish_categories[]") {
+            const selectedCategory = event.target.value;
+            const row = event.target.closest('.dish-row');
+            const dishNameField = row.querySelector('datalist[id^="dish-list"]');
+
+            // Clear existing options
+            dishNameField.innerHTML = "";
+
+            // Populate new options
+            if (dishMapping[selectedCategory]) {
+                dishMapping[selectedCategory].forEach(dish => {
+                    const option = document.createElement('option');
+                    option.value = dish;
+                    dishNameField.appendChild(option);
+                });
+            }
+        }
+    });
+
+    // Handle kitchen ID mapping
+    document.getElementById('kitchen-name-input').addEventListener('input', function () {
+        const datalist = document.getElementById('kitchens-list');
+        const hiddenInput = document.getElementById('kitchen-id-input');
+        const inputValue = this.value;
+
+        // Find the selected option in the datalist
+        const selectedOption = Array.from(datalist.options).find(option => option.value === inputValue);
+
+        // Set the hidden input value to the kitchen ID or clear it if no match is found
+        hiddenInput.value = selectedOption ? selectedOption.getAttribute('data-id') : '';
+    });
+
+    // Validate form submission: Ensure kitchen ID is set
+    document.querySelector('form').addEventListener('submit', function (event) {
+        const hiddenInput = document.getElementById('kitchen-id-input');
+        if (!hiddenInput.value) {
+            event.preventDefault(); // Prevent form submission
+            alert('Please select a valid kitchen from the list.');
+        }
+    });
+
+    // Initialize the row buttons on page load
+    document.addEventListener('DOMContentLoaded', updateRowButtons);
+</script>
+{% endblock %}

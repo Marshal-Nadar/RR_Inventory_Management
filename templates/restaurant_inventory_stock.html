@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-wrapper">
+    <div class="content">
+        <div class="page-header">
+            <div class="page-title">
+                <h4>Restaurant Stock Details</h4>
+            </div>
+            <!-- <div class="page-btn">
+                <a href="/addpurchase" class="btn btn-added">
+                    <img src="../static/img/icons/plus.svg" alt="img">Add New Purchases
+                </a>
+            </div> -->
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <div class="table-top">
+                    <div class="search-set">
+                        <div class="search-input">
+                            <a class="btn btn-searchset"><img src="../static/img/icons/search-white.svg" alt="img"></a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table datanew">
+                        <thead>
+                            <tr>
+                                <th>S.No</th>
+                                <th>Raw Material</th>
+                                <th>Category</th>
+                                <th>Opening Quantity</th>
+                                <th>Incoming Quantity</th>
+                                <th>Outgoing Quantity</th>
+                                <th>Available Quantity</th>
+                                <th>Minimum Required Quantity</th>
+                                <th>Quantity Needed</th>
+                                <th>Metric</th>
+                                <th>Restaurant Name</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stock in restaurantinv_stock %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td>{{ stock['rawmaterial_name']}}</td>
+                                <td>{{ stock['category']}}</td>
+                                <td>{{ stock['opening_stock'] }}</td>
+                                <td>{{ stock['incoming_stock'] }}</td>
+                                <td>{{ stock['outgoing_stock'] }}</td>
+                                <td>{{ stock['currently_available'] }}</td>
+                                <td>{{ stock['minimum_required'] }}</td>
+                                <td style="color: {% if stock['quantity_needed'] > 0 %}red{% else %}black{% endif %};">
+                                    {{ stock['quantity_needed'] }}
+                                </td>
+                                <td>{{ stock['metric'] }}</td>
+                                <td>{{ stock['restaurantname']}}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

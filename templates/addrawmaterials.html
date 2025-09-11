@@ -1,0 +1,237 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-wrapper">
+    <div class="content">
+        <div class="page-header">
+            <div class="page-title">
+                <h4>Add Raw Material</h4>
+            </div>
+        </div>
+        <form action="/addrawmaterials" method="POST">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-lg-12">
+                            <div id="raw-material-container" class="scrollable-container">
+                                <div class="row raw-material-row">
+                                    <div class="col-lg-1 col-sm-2 col-2 d-flex align-items-center">
+                                        <label class="sno">1</label>
+                                    </div>
+                                    <div class="col-lg-3 col-sm-6 col-12">
+                                        <div class="form-group">
+                                            <label>Category</label>
+                                            <input type="text" name="materialcategory" class="form-control" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-3 col-sm-6 col-12">
+                                        <div class="form-group">
+                                            <label>Raw Material Name</label>
+                                            <input type="text" name="rawmaterial_name[]" class="form-control" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-3 col-sm-6 col-12">
+                                        <div class="form-group">
+                                            <label>Metric</label>
+                                            <select class="select form-control" name="metric[]">
+                                                <option value="kg">kilograms(kg)</option>
+                                                <option value="grams">grams(g)</option>
+                                                <option value="liter">liter(l)</option>
+                                                <option value="ml">milliliter(ml)</option>
+                                                <option value="unit">unit</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-1 col-sm-2 col-2 d-flex align-items-center">
+                                        <button type="button" class="btn btn-add" onclick="addRawMaterial()">+</button>
+                                    </div>
+                                    <div class="col-lg-1 col-sm-2 col-2 d-flex align-items-center">
+                                        <button type="button" class="btn btn-remove"
+                                            onclick="removeRawMaterial(this)">x</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                        <ul class="flash-messages">
+                            {% for category, message in messages %}
+                            <li class="{{ category }}"><b>**{{ message }}</b></li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                        {% endwith %}
+                        <div class="col-lg-12">
+                            <button type="submit" class="btn btn-submit me-2">Submit</button>
+                            <a href="/rawmaterialslist" class="btn btn-cancel">Cancel</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // Function to handle input validation
+    function handleInputValidation(input) {
+        input.addEventListener('input', function () {
+            if (input.name === 'materialcategory' || input.name === 'rawmaterial_name[]') {
+                this.value = this.value.toUpperCase();
+            }
+        });
+    }
+
+    // Function to add validation to all inputs within a row
+    function addValidationToRow(row) {
+        const materialCategoryInput = row.querySelector('input[name="materialcategory"]');
+        const rawMaterialNameInputs = row.querySelectorAll('input[name="rawmaterial_name[]"]');
+        handleInputValidation(materialCategoryInput);
+        rawMaterialNameInputs.forEach(handleInputValidation);
+    }
+
+    // Function to add a new raw material row
+    function addRawMaterial() {
+        const container = document.getElementById('raw-material-container');
+        const newRow = document.createElement('div');
+        newRow.classList.add('row', 'raw-material-row');
+        newRow.innerHTML = `
+            <div class="col-lg-1 col-sm-2 col-2 d-flex align-items-center">
+                <label class="sno"></label>
+            </div>
+            <div class="col-lg-3 col-sm-6 col-12">
+                <div class="form-group">
+                    <label>Category</label>
+                    <input type="text" name="materialcategory" class="form-control" required>
+                </div>
+            </div>
+            <div class="col-lg-3 col-sm-6 col-12">
+                <div class="form-group">
+                    <label>Raw Material Name</label>
+                    <input type="text" name="rawmaterial_name[]" class="form-control" required>
+                </div>
+            </div>
+            <div class="col-lg-3 col-sm-6 col-12">
+                <div class="form-group">
+                    <label>Metric</label>
+                    <select class="select form-control" name="metric[]">
+                        <option value="kg">kilograms(kg)</option>
+                        <option value="grams">grams(g)</option>
+                        <option value="liter">liter(l)</option>
+                        <option value="ml">milliliter(ml)</option>
+                        <option value="unit">unit</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-1 col-sm-2 col-2 d-flex align-items-center">
+                <button type="button" class="btn btn-add" onclick="addRawMaterial()">+</button>
+            </div>
+            <div class="col-lg-1 col-sm-2 col-2 d-flex align-items-center">
+                <button type="button" class="btn btn-remove" onclick="removeRawMaterial(this)">x</button>
+            </div>
+        `;
+        container.appendChild(newRow);
+        updateSerialNumbers();
+        // Set focus to the first input field of the new row
+        const firstInput = newRow.querySelector('input');
+        if (firstInput) {
+            firstInput.focus();
+        }
+        // Add validation to newly added row
+        addValidationToRow(newRow);
+    }
+
+    // Function to remove a raw material row
+    function removeRawMaterial(button) {
+        const row = button.closest('.raw-material-row');
+        row.remove();
+        updateSerialNumbers();
+    }
+
+    // Function to update serial numbers
+    function updateSerialNumbers() {
+        const rows = document.querySelectorAll('.raw-material-row');
+        rows.forEach((row, index) => {
+            const sno = row.querySelector('.sno');
+            sno.textContent = index + 1;
+        });
+    }
+
+    // Ensure select dropdown styles are applied dynamically
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('select.select').forEach((select) => {
+            // Reapply styles if your CSS framework requires initialization
+        });
+
+        // Add validation to the initial row
+        const initialRow = document.querySelector('.raw-material-row');
+        addValidationToRow(initialRow);
+
+        // Add form submit event listener
+        document.querySelector('form').addEventListener('submit', function (event) {
+            const materialCategoryInputs = document.querySelectorAll('input[name="materialcategory"]');
+            const rawMaterialNameInputs = document.querySelectorAll('input[name="rawmaterial_name[]"]');
+            const isMaterialCategoryEmpty = Array.from(materialCategoryInputs).some(input => input.value.trim() === '');
+            const isRawMaterialNameEmpty = Array.from(rawMaterialNameInputs).some(input => input.value.trim() === '');
+
+            if (isMaterialCategoryEmpty || isRawMaterialNameEmpty) {
+                alert('Material Category and Raw Material Name cannot be empty or just spaces.');
+                event.preventDefault(); // Prevent the form from being submitted
+            }
+        });
+    });
+
+    // Handle Enter Key
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault(); // Prevent form submission
+            const focusedRow = e.target.closest('.raw-material-row');
+            if (focusedRow) {
+                const addBtn = focusedRow.querySelector('.btn-add');
+                if (addBtn) {
+                    addBtn.click();
+                }
+            }
+        }
+    });
+</script>
+
+<style>
+    .scrollable-container {
+        max-height: 400px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        padding: 10px;
+        margin-bottom: 15px;
+    }
+
+    .btn-add {
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        cursor: pointer;
+        border-radius: 5px;
+    }
+
+    .btn-remove {
+        background-color: #f44336;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        cursor: pointer;
+        border-radius: 5px;
+    }
+
+    .sno {
+        font-weight: bold;
+        font-size: 16px;
+    }
+
+    /* Ensure dropdown styles are applied */
+    .select {
+        width: 100%;
+        padding: 5px;
+    }
+
+</style>
+{% endblock %}

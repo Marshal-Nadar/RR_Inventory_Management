@@ -1,0 +1,358 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-wrapper">
+    <div class="content">
+        <div class="page-header">
+            <div class="page-title">
+                <h4>Add Purchase</h4>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="alert-container">
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="/add_purchase">
+            <div class="card">
+                <div class="card-body">
+                    <!-- First Row -->
+                    <div class="row">
+                        <!-- Purchase Date -->
+                        <div class="col-lg-3 col-sm-6 col-12">
+                            <div class="form-group">
+                                <label>Date</label>
+                                <input type="date" name="purchase_date" class="form-control" value="{{ today_date }}"
+                                    required>
+                            </div>
+                        </div>
+                        <!-- Vendor Name -->
+                        <div class="col-lg-3 col-sm-6 col-12">
+                            <div class="form-group">
+                                <label>Vendor</label>
+                                <input list="vendors" name="vendor" class="form-control" placeholder="Select Vendor"
+                                    required>
+                                <datalist id="vendors">
+                                    {% for vendor in vendors %}
+                                    <option value="{{ vendor.vendor_name }}"></option>
+                                    {% endfor %}
+                                </datalist>
+                            </div>
+                        </div>
+                        <!-- Invoice Number -->
+                        <div class="col-lg-3 col-sm-6 col-12">
+                            <div class="form-group">
+                                <label>Invoice Number</label>
+                                <input type="text" name="invoice_number" class="form-control" required>
+                            </div>
+                        </div>
+                        <!-- Destination -->
+                        <div class="col-lg-3 col-sm-6 col-12">
+                            <div class="form-group">
+                                <label>Destination Storage Room</label>
+                                <input list="storage_rooms" name="storage_room" class="form-control"
+                                    placeholder="Select Storage Room" required>
+                                <datalist id="storage_rooms">
+                                    {% for room in storage_rooms %}
+                                    <option value="{{ room.storageroomname }}"></option>
+                                    {% endfor %}
+                                </datalist>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Raw Material Rows -->
+                    <div id="raw-material-container">
+                        <!-- First Row with Headings -->
+                        <div class="row align-items-center raw-material-row">
+                            <!-- <label>S.No</label> -->
+                            <div class="col-lg-1 col-sm-1 col-2">
+                                <div class="sno">1</div>
+                            </div>
+                            <div class="col-lg-2 col-sm-3 col-12">
+                                <label>Raw Material</label>
+                                <input list="raw_materials" name="raw_material[]"
+                                    class="form-control raw-material-input" placeholder="Raw Material" required>
+                                <datalist id="raw_materials">
+                                    {% for material in raw_materials %}
+                                    <option value="{{ material.name }}" data-metric="{{ material.metric }}"></option>
+                                    {% endfor %}
+                                </datalist>
+                            </div>
+                            <div class="col-lg-2 col-sm-2 col-12">
+                                <label>Quantity</label>
+                                <input type="number" name="quantity[]" class="form-control quantity-input" step="0.01"
+                                    min="0.01" placeholder="Quantity" required>
+                            </div>
+                            <div class="col-lg-2 col-sm-2 col-12">
+                                <label>Metric</label>
+                                <select name="metric[]" class="form-control metric-dropdown" required>
+                                    <option value="kg">Kilogram (kg)</option>
+                                    <option value="grams">Grams</option>
+                                    <option value="liter">Liter</option>
+                                    <option value="ml">Milliliter (ml)</option>
+                                    <option value="unit">Unit</option>
+                                </select>
+                            </div>
+                            <input type="hidden" class="hidden-metric-input" name="metric[]">
+                            <div class="col-lg-2 col-sm-2 col-12">
+                                <label>Price per Unit(Rs)</label>
+                                <input type="number" name="price_per_metric[]" class="form-control price-input"
+                                    step="0.01" min="0.01" placeholder="Price per Metric" required>
+                            </div>
+                            <div class="col-lg-2 col-sm-2 col-12">
+                                <label>Total Cost(Rs)</label>
+                                <input type="number" name="total_cost[]" class="form-control total-cost-input"
+                                    step="0.01" placeholder="Total Cost" readonly>
+                            </div>
+                            <div class="col-lg-1 col-sm-1 col-2 d-flex align-items-center">
+                                <button type="button" class="btn btn-success btn-add-row">+</button>
+                                <button type="button" class="btn btn-danger btn-remove-row">X</button>
+                            </div>
+                        </div>
+                    </div>
+
+
+                    <!-- Submit Buttons -->
+                    <div class="row mt-3">
+                        <div class="col-lg-9">
+                            <button type="submit" class="btn btn-submit me-2" id="submit-btn">Submit</button>
+                            <span id="processing"
+                                style="display: none; font-weight: bold; color: blue; margin-left: 10px;">
+                                Processing...
+                            </span>
+                            <a href="/index" class="btn btn-cancel">Cancel</a>
+                        </div>
+                        <div class="col-lg-3">
+                            <input type="number" name="overall_cost" class="form-control overall-cost-input" step="0.01"
+                                placeholder="Overall Cost" readonly>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const container = document.getElementById('raw-material-container');
+
+
+        // Add new row
+        container.addEventListener('click', function (e) {
+            if (e.target.classList.contains('btn-add-row')) {
+                const newRow = e.target.closest('.raw-material-row').cloneNode(true);
+                newRow.querySelectorAll('input, select').forEach(input => input.value = ''); // Clear inputs
+
+                // Remove any existing 'X' buttons before cloning
+                const existingRemoveBtn = newRow.querySelector('.btn-remove-row');
+                if (existingRemoveBtn) {
+                    existingRemoveBtn.remove();
+                }
+
+                // Ensure both + and X buttons for the new row
+                const addBtn = newRow.querySelector('.btn-add-row');
+                addBtn.textContent = '+';
+                addBtn.classList.replace('btn-remove-row', 'btn-add-row');
+                addBtn.classList.replace('btn-danger', 'btn-success');
+
+                // Add an X button
+                const removeBtn = document.createElement('button');
+                removeBtn.type = 'button';
+                removeBtn.textContent = 'X';
+                removeBtn.classList.add('btn', 'btn-danger', 'btn-remove-row');
+                newRow.querySelector('.d-flex').appendChild(removeBtn);
+
+                // Hide labels for subsequent rows
+                const labels = newRow.querySelectorAll('label');
+                labels.forEach(label => label.style.display = 'none');
+
+
+
+                // Append new row to the container
+                container.appendChild(newRow);
+                updateSerialNumbers();
+
+                // Focus the raw material input field in the new row
+                const rawMaterialInput = newRow.querySelector('input[name="raw_material[]"]');
+                if (rawMaterialInput) {
+                    rawMaterialInput.focus();
+                }
+
+                // Re-render the metric dropdown for the new row
+                const metricDropdown = newRow.querySelector('.metric-dropdown');
+                const rawMaterialInputField = newRow.querySelector('input[name="raw_material[]"]');
+
+                if (metricDropdown && rawMaterialInputField) {
+                    metricDropdown.innerHTML = `
+                    <option value="kg">Kilogram (kg)</option>
+                    <option value="grams">Grams</option>
+                    <option value="liter">Liter</option>
+                    <option value="ml">Milliliter (ml)</option>
+                    <option value="unit">Unit</option>
+                `;
+                }
+            }
+        });
+
+        // Update S.No
+        function updateSerialNumbers() {
+            const rows = container.querySelectorAll('.raw-material-row');
+            rows.forEach((row, index) => {
+                const sno = row.querySelector('.sno');
+                sno.textContent = index + 1;
+            });
+        }
+
+        // Remove row
+        container.addEventListener('click', function (e) {
+            if (e.target.classList.contains('btn-remove-row')) {
+                e.target.closest('.raw-material-row').remove();
+                updateSerialNumbers();
+            }
+        });
+
+        container.addEventListener('input', function (e) {
+            if (e.target.classList.contains('price-input') || e.target.classList.contains('quantity-input')) {
+                const row = e.target.closest('.raw-material-row');
+
+                // Get the quantity and price, default to 0 if invalid
+                const quantity = parseFloat(row.querySelector('.quantity-input').value) || 0;
+                const price = parseFloat(row.querySelector('.price-input').value) || 0;
+
+                // Calculate total cost for the row and set it with 3 decimal points
+                const totalCostField = row.querySelector('.total-cost-input');
+                totalCostField.value = (quantity * price).toFixed(2);
+
+                // Calculate the overall cost from all total-cost fields
+                const allCosts = container.querySelectorAll('.total-cost-input');
+                const overallCost = Array.from(allCosts).reduce((sum, ele) => {
+                    sum += parseFloat(ele.value) || 0; // Default to 0 if invalid
+                    return sum;
+                }, 0);
+
+                // Set the overall cost with 2 decimal points
+                const overallCostEle = document.querySelector('.overall-cost-input');
+                overallCostEle.value = overallCost.toFixed(2);
+            }
+        });
+
+
+        // Handle Enter Key
+        container.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault(); // Prevent form submission
+                const addBtn = e.target.closest('.raw-material-row').querySelector('.btn-add-row');
+                if (addBtn) addBtn.click();
+            }
+        });
+
+        // Auto-select metric based on raw material
+        container.addEventListener('input', function (e) {
+            if (e.target.classList.contains('raw-material-input')) {
+                const selectedMaterial = e.target.value;
+                const dataList = document.getElementById('raw_materials');
+                const options = Array.from(dataList.options);
+                const matchingOption = options.find(option => option.value === selectedMaterial);
+
+                if (matchingOption) {
+                    const metric = matchingOption.dataset.metric;
+                    const metricDropdown = e.target.closest('.raw-material-row').querySelector('.metric-dropdown');
+                    metricDropdown.value = metric;
+                }
+            }
+        });
+    });
+    document.addEventListener('DOMContentLoaded', function () {
+        const container = document.getElementById('raw-material-container');
+        const form = document.querySelector('form');
+        const rawMaterialsDataList = document.getElementById('raw_materials');
+
+        // Validation before form submission
+        form.addEventListener('submit', function (e) {
+            const rawMaterialInputs = container.querySelectorAll('.raw-material-input');
+            let isValid = true;
+
+            rawMaterialInputs.forEach(input => {
+                const rawMaterialName = input.value;
+                const isRawMaterialAvailable = Array.from(rawMaterialsDataList.options).some(
+                    option => option.value === rawMaterialName
+                );
+
+                if (!isRawMaterialAvailable) {
+                    isValid = false;
+                    alert(`Raw material "${rawMaterialName}" is not available.`);
+                    input.focus();
+                }
+            });
+
+            if (!isValid) {
+                e.preventDefault(); // Prevent form submission if validation fails
+            }
+        });
+
+        // Auto-select metric AFTER a raw material is chosen from the suggestion list
+        container.addEventListener('change', function (e) {
+            if (e.target.classList.contains('raw-material-input')) {
+                const selectedMaterial = e.target.value;
+                const dataList = document.getElementById('raw_materials');
+                const options = Array.from(dataList.options);
+                const matchingOption = options.find(option => option.value === selectedMaterial);
+
+                const metricDropdown = e.target.closest('.raw-material-row').querySelector('.metric-dropdown');
+                const hiddenMetricInput = e.target.closest('.raw-material-row').querySelector('.hidden-metric-input');
+
+                if (matchingOption) {
+                    const metric = matchingOption.dataset.metric;
+                    metricDropdown.value = metric;
+
+                    // Disable the dropdown so it cannot be changed
+                    metricDropdown.setAttribute('disabled', true);
+
+                    // Ensure the disabled field's value is still submitted
+                    hiddenMetricInput.value = metric;
+                } else {
+                    metricDropdown.value = ''; // Clear the metric if no valid raw material is selected
+                    metricDropdown.removeAttribute('disabled'); // Allow editing temporarily for correction
+                    hiddenMetricInput.value = ''; // Clear hidden input as well
+                }
+            }
+        });
+    });
+    document.querySelector('form').addEventListener('submit', function (e) {
+        const quantityInputs = document.querySelectorAll('.quantity-input');
+        let isValid = true;
+
+        quantityInputs.forEach(input => {
+            const quantity = parseFloat(input.value) || 0;
+
+            if (quantity <= 0) {
+                isValid = false;
+                alert('All quantities must be positive. Please correct the values.');
+                input.focus();
+            }
+        });
+
+        if (!isValid) {
+            e.preventDefault(); // Stop the form submission
+        }
+    });
+    document.addEventListener("DOMContentLoaded", function () {
+        const form = document.querySelector("form");
+        const submitBtn = document.getElementById("submit-btn");
+        const processingText = document.getElementById("processing");
+
+        form.addEventListener("submit", function () {
+            // Disable the submit button and show "Processing..." text
+            submitBtn.disabled = true;
+            processingText.style.display = "inline";
+        });
+    });
+</script>
+{% endblock %}

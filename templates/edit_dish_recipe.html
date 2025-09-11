@@ -1,0 +1,211 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-wrapper">
+    <div class="content">
+        <div class="page-header">
+            <div class="page-title">
+                <h4>Edit Dish Recipe</h4>
+            </div>
+        </div>
+        <div>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <ul class="flash-messages">
+                {% for category, message in messages %}
+                <li class="{{ category }}"><b>**{{ message }}</b></li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% endwith %}
+        </div>
+        <form id="dish-form">
+            <div class="row mb-4">
+                <!-- Category Input with Datalist -->
+                <div class="col-md-4">
+                    <label for="category">Dish Category</label>
+                    <input list="categoryList" id="category" class="form-control" required>
+                    <datalist id="categoryList">
+                        {% for category in dish_categories %}
+                        <option value="{{ category['category'] }}"></option>
+                        {% endfor %}
+                    </datalist>
+                </div>
+
+                <!-- Dish Input with Datalist -->
+                <div class="col-md-4">
+                    <label for="dish">Dish Name</label>
+                    <input list="dishList" id="dish" class="form-control" disabled required>
+                    <datalist id="dishList">
+                        <!-- Options will be populated dynamically -->
+                    </datalist>
+                </div>
+
+
+                <!-- Submit Button -->
+                <div class="col-md-4 d-flex align-items-end">
+                    <button type="button" id="fetch-raw-materials" class="btn btn-primary" disabled>Fetch Raw
+                        Materials</button>
+                </div>
+            </div>
+        </form>
+
+        <!-- Raw Materials Section -->
+        <div class="card mt-4">
+            <div class="card-body">
+                <h5>Raw Materials</h5>
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Raw Material Name</th>
+                            <th>Quantity</th>
+                            <th>Metric</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="raw-materials-table">
+                        <!-- Rows will be dynamically populated -->
+                    </tbody>
+                </table>
+                <button type="button" id="add-row" class="btn btn-secondary">+ Add Raw Material</button>
+            </div>
+        </div>
+
+        <!-- Final Submit -->
+        <button type="button" id="submit-raw-materials" class="btn btn-success mt-4">Submit</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const categoryInput = document.getElementById("category");
+        const dishInput = document.getElementById("dish");
+        const fetchMaterialsBtn = document.getElementById("fetch-raw-materials");
+        const rawMaterialsTable = document.getElementById("raw-materials-table");
+        const addRowBtn = document.getElementById("add-row");
+        const submitMaterialsBtn = document.getElementById("submit-raw-materials");
+
+        // Preloaded dishes data (from Flask context)
+        const dishes = {{ dishes | tojson | safe
+    }};
+
+    // Enable dish input when a valid category is selected
+    categoryInput.addEventListener("input", function () {
+        const selectedCategory = this.value.trim();
+        dishInput.value = ""; // Reset dish input
+        dishInput.disabled = true; // Disable dish input initially
+        fetchMaterialsBtn.disabled = true;
+
+        // Filter dishes based on category
+        const filteredDishes = dishes.filter(dish => dish.category === selectedCategory);
+
+        // Populate dish datalist dynamically
+        const dishList = document.getElementById("dishList");
+        dishList.innerHTML = ""; // Clear previous options
+        filteredDishes.forEach(dish => {
+            let option = document.createElement("option");
+            option.value = dish.name;
+            dishList.appendChild(option);
+        });
+
+        // Enable dish input if there are available dishes
+        if (filteredDishes.length > 0) {
+            dishInput.disabled = false;
+        }
+    });
+
+    // Enable Fetch Raw Materials button when a valid dish is selected
+    dishInput.addEventListener("input", function () {
+        const selectedDish = this.value.trim();
+        const validDish = dishes.some(dish => dish.name === selectedDish);
+        fetchMaterialsBtn.disabled = !validDish;
+    });
+
+    // Fetch raw materials for the selected dish
+    fetchMaterialsBtn.addEventListener("click", function () {
+        const dishName = dishInput.value.trim();
+        const selectedDish = dishes.find(dish => dish.name === dishName);
+
+        if (!selectedDish) return; // Prevent fetching if dish is not valid
+
+        fetch(`/get_dish_raw_materials?dish_id=${selectedDish.id}`)
+            .then(response => response.json())
+            .then(data => {
+                populateRawMaterials(data.raw_materials);
+            })
+            .catch(error => console.error("Error fetching raw materials:", error));
+    });
+
+    // Populate raw materials table
+    function populateRawMaterials(rawMaterials) {
+        rawMaterialsTable.innerHTML = ""; // Clear table
+        rawMaterials.forEach(material => {
+            addMaterialRow(material[1], material[2], material[3]);
+        });
+    }
+
+    // Add a new raw material row
+    addRowBtn.addEventListener("click", function () {
+        addMaterialRow("", "", "");
+    });
+
+    // Add material row to the table
+    function addMaterialRow(name, quantity, metric) {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+        <td><input type="text" class="form-control" name="material_names[]" value="${name}" required></td>
+        <td><input type="number" class="form-control" name="quantities[]" value="${quantity}" required></td>
+        <td>
+            <select name="metrics[]" class="form-control metric-input" required>
+                <option value="kg" ${metric === "kg" ? "selected" : ""}>kilograms (kg)</option>
+                <option value="grams" ${metric === "grams" ? "selected" : ""}>grams (g)</option>
+                <option value="liter" ${metric === "liter" ? "selected" : ""}>liter (l)</option>
+                <option value="ml" ${metric === "ml" ? "selected" : ""}>milliliter (ml)</option>
+                <option value="unit" ${metric === "unit" ? "selected" : ""}>unit</option>
+            </select>
+        </td>
+        <td><button type="button" class="btn btn-danger btn-remove">X</button></td>
+    `;
+        rawMaterialsTable.appendChild(row);
+
+        // Attach remove event to the button
+        row.querySelector(".btn-remove").addEventListener("click", function () {
+            row.remove();
+        });
+    }
+
+    // Submit raw materials
+    submitMaterialsBtn.addEventListener("click", function () {
+        const materials = Array.from(rawMaterialsTable.querySelectorAll("tr")).map(row => ({
+            name: row.querySelector("input[name='material_names[]']").value,
+            quantity: row.querySelector("input[name='quantities[]']").value,
+            metric: row.querySelector("input[name='metrics[]']").value
+        }));
+
+        const dishName = dishInput.value.trim();
+        const selectedDish = dishes.find(dish => dish.name === dishName);
+
+        if (!selectedDish) {
+            alert("Please select a valid dish.");
+            return;
+        }
+
+        fetch("/submit_raw_materials", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dish_id: selectedDish.id, materials })
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.redirect_url) {
+                    window.location.href = data.redirect_url;
+                } else {
+                    alert(data.message);
+                }
+            })
+            .catch(error => console.error("Error submitting materials:", error));
+    });
+});
+</script>
+{% endblock %}

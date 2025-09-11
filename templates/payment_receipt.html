@@ -1,0 +1,195 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-wrapper">
+    <div class="content">
+        <div class="page-header">
+            <div class="page-title">
+                <h4>Payment Receipt</h4>
+            </div>
+            <div class="page-btn">
+                <a href="/pending_payments" class="btn btn-added">
+                    <img src="../static/img/icons/plus.svg" alt="img"> Pay Amount
+                </a>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <!-- Filters Section -->
+                <div class="row align-items-end mb-4">
+                    <div class="col-md-4">
+                        <label for="vendorDropdown" class="form-label">Vendor</label>
+                        <input list="vendorList" id="vendorDropdown" class="form-control">
+                        <datalist id="vendorList">
+                            {% for vendor in vendors %}
+                            <option value="{{ vendor.vendor_name }}" data-id="{{ vendor.id }}"></option>
+                            {% endfor %}
+                        </datalist>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="fromDate" class="form-label">From Date</label>
+                        <input type="date" id="from_date" class="form-control" required>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="toDate" class="form-label">To Date</label>
+                        <input type="date" id="to_date" class="form-control" required>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <button id="submitBtn" class="btn btn-primary me-2">Submit</button>
+                        <button id="printButton" class="btn btn-secondary" disabled>Print</button>
+                    </div>
+                </div>
+
+                <!-- Table Section -->
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="table">
+                            <tr>
+                                <th>Amount Paid On</th>
+                                <th>Invoice Number</th>
+                                <th>Invoice Purchase Date</th>
+                                <th>Payment Mode</th>
+                                <th>Amount Paid (Rs)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paymentTableBody">
+                            <tr>
+                                <td colspan="4" class="text-center">No data found</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Total Paid Amount Section -->
+                <div class="mt-3 text-end">
+                    <h5 id="totalPaid" class="fw-bold text-primary"></h5>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const vendorInput = document.getElementById('vendorDropdown');
+        const vendorList = document.getElementById('vendorList');
+        const fromDateInput = document.getElementById('from_date');
+        const toDateInput = document.getElementById('to_date');
+        const submitButton = document.getElementById('submitBtn');
+        const printButton = document.getElementById('printButton');
+        const paymentTableBody = document.getElementById('paymentTableBody');
+        const totalPaidField = document.getElementById('totalPaid');
+
+        function getVendorId(vendorName) {
+            const option = Array.from(vendorList.options).find(opt => opt.value === vendorName);
+            return option ? option.getAttribute('data-id') : null;
+        }
+
+        function resetTable() {
+            paymentTableBody.innerHTML = '<tr><td colspan="4" class="text-center">No data found</td></tr>';
+            totalPaidField.textContent = '';
+            printButton.disabled = true; // Disable print button when no data
+        }
+
+        submitButton.addEventListener('click', function () {
+            const vendorId = getVendorId(vendorInput.value);
+            const fromDate = fromDateInput.value;
+            const toDate = toDateInput.value;
+
+            if (!vendorId || !fromDate || !toDate) {
+                alert('Please select a vendor and date range');
+                return;
+            }
+
+            fetch(`/get_vendor_payments?vendor_id=${vendorId}&from_date=${fromDate}&to_date=${toDate}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.payments && data.payments.length > 0) {
+                        paymentTableBody.innerHTML = '';
+                        let totalPaid = 0;
+                        data.payments.forEach(payment => {
+                            totalPaid += payment.amount_paid;
+                            const row = `
+                            <tr>
+                                <td>${payment.paid_on}</td>
+                                <td>${payment.invoice_number}</td>
+                                <td>${payment.purchase_date}</td>
+                                <td>${payment.mode_of_payment}</td>
+                                <td>${parseFloat(payment.amount_paid).toLocaleString('en-IN')}</td>
+                            </tr>
+                        `;
+                            paymentTableBody.insertAdjacentHTML('beforeend', row);
+                        });
+
+                        totalPaidField.textContent = `Total Paid: Rs. ${totalPaid.toLocaleString('en-IN')}`;
+                        printButton.disabled = false; // Enable print button when data is available
+                    } else {
+                        resetTable();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching payment records:', error);
+                    resetTable();
+                });
+        });
+
+        printButton.addEventListener('click', function () {
+            const printContent = `
+        <div>
+            <div style="text-align: center;">
+                <h2> {{ contact_details.name }} </h2>
+                <p> Contact: {{ contact_details.contact_number }} </p>
+                <p> Address: {{ contact_details.address }} </p>
+            </div>
+            <p><b>Vendor:</b> ${vendorInput.value}</p>
+            <p><b>Date Range:</b> ${fromDateInput.value} to ${toDateInput.value}</p>
+            <table border="1" width="100%" style="border-collapse: collapse; text-align: center;">
+                <thead>
+                    <tr>
+                        <th>Amount Paid On</th>
+                        <th>Invoice Number</th>
+                        <th>Invoice Purchase Date</th>
+                        <th>Payment Mode</th>
+                        <th>Amount Paid(Rs)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${paymentTableBody.innerHTML}
+                </tbody>
+            </table>
+            <p><strong>${totalPaidField.textContent}</strong></p>
+            <br><br>
+            <div style="display: flex; justify-content: space-between;">
+                <p>Authorized Signature: __________</p>
+                <p>Receiver Signature: __________</p>
+            </div>
+        </div>
+        `;
+
+            let iframe = document.createElement('iframe');
+            iframe.style.position = 'absolute';
+            iframe.style.width = '0px';
+            iframe.style.height = '0px';
+            iframe.style.border = 'none';
+            document.body.appendChild(iframe);
+
+            let doc = iframe.contentWindow.document;
+            doc.open();
+            doc.write('<html><head><title>Payment Receipt</title></head><body>');
+            doc.write(printContent);
+            doc.write('</body></html>');
+            doc.close();
+
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+            }, 1000);
+        });
+
+    });
+</script>
+{% endblock %}

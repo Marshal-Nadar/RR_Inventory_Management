@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-wrapper">
+    <div class="content">
+        <div class="page-header">
+            <div class="page-title">
+                <h4>Raw Material Transfer List</h4>
+                <h6>Manage your Raw Material Transfer</h6>
+            </div>
+            {% if user.role=='admin' or user.role=='store_manager' or
+            user.role=='branch_manager' %}
+            <div class="page-btn">
+                <a href="/transfer_raw_material" class="btn btn-added">
+                    <img src="../static/img/icons/plus.svg" alt="img">Transfer Raw Material
+                </a>
+            </div>
+            {% endif %}
+        </div>
+        <form method="POST" action="/list_rawmaterial_transfers">
+            <div class="row align-items-center mb-3">
+                <div class="col-md-6">
+                    <label>Transferred Date</label>
+                    <input type="date" name="transfer_date" class="form-control" value="{{ current_date }}" required>
+                </div>
+            </div>
+            <div class="table-responsive">
+                {% if transfers %}
+                <table class="table datanew">
+                    <thead>
+                        <tr>
+                            <th>S.No</th>
+                            <th>Raw Material</th>
+                            <th>Quantity</th>
+                            <th>Metric</th>
+                            <th>Transferred From</th>
+                            <th>Destination Type</th>
+                            <th>Transferred To</th>
+                            <th>Transfered on</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for transfer in transfers %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ transfer['raw_material_name']}}</td>
+                            <td>{{ "%.2f"|format(transfer['quantity']) }}</td>
+                            <td>{{ transfer['metric'] }}</td>
+                            <td>{{ transfer['transferred_from'] }}</td>
+                            <td>{{ transfer['destination_type'] }}</td>
+                            <td>{{ transfer['transferred_to'] }}</td>
+                            <td>{{ transfer['transferred_date'] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p>No data available for the selected date.</p>
+                {% endif %}
+            </div>
+
+            <!-- Submit Button -->
+            <button type="submit" class="btn btn-primary mt-3">Submit</button>
+        </form>
+
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="../static/plugins/select2/js/select2.min.js"></script>
+<script src="../static/plugins/sweetalert/sweetalert2.all.min.js"></script>
+<script src="../static/plugins/sweetalert/sweetalerts.min.js"></script>
+{% endblock %}
