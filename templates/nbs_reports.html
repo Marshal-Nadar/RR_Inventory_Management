@@ -33,7 +33,7 @@
           <div class="col-md-4">
             <label for="restaurant_id" class="form-label">Restaurant</label>
 
-            {% if user.role == 'admin' %}
+            {% if user.role in ['admin', 'store_manager'] %}
             <!-- Admin can select any restaurant -->
             <select id="restaurant_id" name="restaurant_id" class="form-select">
               <option value="">All Restaurants</option>
@@ -90,7 +90,9 @@
               <tr>
                 <th>Date</th>
                 <th>Restaurant</th>
-                <th>Total Income</th>
+                <th>Swiggy</th>
+                <th>Zomato</th>
+                <th style="width: 10%;">Total Income (PP + NS + OD)</th>
                 <th>Net Counter</th>
                 <th>Net Sales</th>
                 <th>Difference</th>
@@ -102,6 +104,8 @@
               <tr>
                 <td>{{ report.report_date.strftime('%d/%m/%y') }}</td>
                 <td>{{ report.restaurantname }}</td>
+                <td>{{ report.swiggy or 0 }}</td>
+                <td>{{ report.zomato or 0 }}</td>
                 <td>{{ "%.2f"|format(report.total_income) }}</td>
                 <td>{{ "%.2f"|format(report.net_counter) }}</td>
                 <td>{{ "%.2f"|format(report.net_petpooja) }}</td>
@@ -133,8 +137,10 @@
             </tbody>
 
             <tfoot>
-              <tr style="font-weight: bold; background-color: #f2f2f2;">
-                <td colspan="2" class="text-end">TOTALS:</td>
+              <tr style="font-weight: bold;">
+                <td colspan="2">Total</td>
+                <td>{{ "%.2f"|format(totals.total_swiggy) }}</td> <!-- Swiggy total -->
+                <td>{{ "%.2f"|format(totals.total_zomato) }}</td> <!-- Zomato total -->
                 <td>{{ "%.2f"|format(totals.total_income) }}</td>
                 <td>{{ "%.2f"|format(totals.net_counter) }}</td>
                 <td>{{ "%.2f"|format(totals.net_sales) }}</td>
@@ -167,7 +173,7 @@
     const tableHTML = tableClone.outerHTML;
 
     const printContent = `
-      <!DOCTYPE html>
+       <!DOCTYPE html>
       <html>
       <head>
         <title>NBS Daily Reports</title>

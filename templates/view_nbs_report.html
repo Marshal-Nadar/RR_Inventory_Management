@@ -105,7 +105,9 @@
 
         <div class="mt-4">
           <a href="{{ url_for('nbs_reports') }}" class="btn btn-secondary">Back to List</a>
+          {% if user.role == 'admin' %}
           <a href="/edit-nbs-report/{{ report.id }}" class="btn btn-primary">Edit Report</a>
+          {% endif %}
           <button onclick="printNBSReport()" class="btn btn-info">Print Report</button>
         </div>
       </div>
