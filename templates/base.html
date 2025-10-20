@@ -77,10 +77,9 @@
                         </li>
 
                         <!-- ========================================= -->
-                        <!-- BRANCH MANAGER & STORE MANAGER VIEW -->
+                        <!-- BRANCH MANAGER ONLY VIEW -->
                         <!-- ========================================= -->
-                        {% if user.role in ['branch_manager', 'store_manager'] %}
-
+                        {% if user.role == 'branch_manager' %}
                         <!-- Miscellaneous Expense -->
                         <li class="submenu">
                             <a href="javascript:void(0);">
@@ -112,24 +111,95 @@
                                 <span class="menu-arrow"></span>
                             </a>
                             <ul>
-                                {% if user.role == 'branch_manager' %}
                                 <li>
                                     <a href="/transfer_raw_material"
                                         class="{{ 'active' if request.path == '/transfer_raw_material' else '' }}">
                                         Request Raw Materials
                                     </a>
                                 </li>
-                                {% endif %}
+                                <li>
+                                    <a href="/list_rawmaterial_transfers"
+                                        class="{{ 'active' if request.path == '/list_rawmaterial_transfers' else '' }}">
+                                        List Raw Material Transfers
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/list_rawmaterial_transfers_range"
+                                        class="{{ 'active' if request.path == '/list_rawmaterial_transfers_range' else '' }}">
+                                        Get Transfers By Range
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/transfer_raw_material_report"
+                                        class="{{ 'active' if request.path == '/transfer_raw_material_report' else '' }}">
+                                        Transfer Report
+                                    </a>
+                                </li>
+                            </ul>
+                        </li>
 
-                                {% if user.role == 'store_manager' %}
+                        <!-- Daily Report -->
+                        <li class="submenu">
+                            <a href="javascript:void(0);">
+                                <img src="../static/img/icons/sales1.svg" alt="img">
+                                <span>Daily Report</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <ul>
+                                <li><a href="/add-nbs-report"
+                                        class="{{ 'active' if request.path == '/add-nbs-report' else '' }}">Add NBS
+                                        Daily Report</a></li>
+                                <li><a href="/nbs-reports"
+                                        class="{{ 'active' if request.path == '/nbs-reports' else '' }}">NBS Daily
+                                        Report</a></li>
+                            </ul>
+                        </li>
+                        {% endif %}
+
+                        <!-- ========================================= -->
+                        <!-- STORE MANAGER ONLY VIEW -->
+                        <!-- ========================================= -->
+                        {% if user.role == 'store_manager' %}
+                        <!-- Miscellaneous Expense -->
+                        <li class="submenu">
+                            <a href="javascript:void(0);">
+                                <img src="../static/img/icons/sales1.svg" alt="img">
+                                <span>Miscellaneous Expense</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <ul>
+                                <li>
+                                    <a href="/addmiscitem"
+                                        class="{{ 'active' if request.path == '/addmiscitem' else '' }}">
+                                        Add Miscellaneous Expense
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="/miscitemlist"
+                                        class="{{ 'active' if request.path == '/miscitemlist' else '' }}">
+                                        Miscellaneous Expense List
+                                    </a>
+                                </li>
+                                <li><a href="/misc_item_report"
+                                        class="{{ 'active' if request.path == '/misc_item_report' else '' }}">Miscellaneous
+                                        Expense Report</a></li>
+                            </ul>
+                        </li>
+
+                        <!-- Transfer Section -->
+                        <li class="submenu">
+                            <a href="javascript:void(0);">
+                                <img src="../static/img/icons/transfer1.svg" alt="img">
+                                <span>Transfer</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <ul>
                                 <li>
                                     <a href="/raw_material_transfers"
                                         class="{{ 'active' if request.path == '/raw_material_transfers' else '' }}">
                                         Transfer Requests
                                     </a>
                                 </li>
-                                {% endif %}
-
                                 <li>
                                     <a href="/list_rawmaterial_transfers"
                                         class="{{ 'active' if request.path == '/list_rawmaterial_transfers' else '' }}">
@@ -168,13 +238,74 @@
                             </ul>
                         </li>
 
+                        <!-- Purchase -->
+                        <li class="submenu">
+                            <a href="javascript:void(0);">
+                                <img src="../static/img/icons/purchase1.svg" alt="img">
+                                <span>Purchase</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <ul>
+                                <li><a href="/add_purchase"
+                                        class="{{ 'active' if request.path == '/add_purchase' else '' }}">Add
+                                        Purchase</a></li>
+                                <li><a href="/purchase_list"
+                                        class="{{ 'active' if request.path == '/purchase_list' else '' }}">Purchase
+                                        List</a></li>
+                                <li><a href="/purchase_record"
+                                        class="{{ 'active' if request.path == '/purchase_record' else '' }}">Purchase
+                                        Record</a></li>
+                            </ul>
+                        </li>
+
+                        <!-- Payments -->
+                        <li class="submenu">
+                            <a href="javascript:void(0);">
+                                <img src="../static/img/icons/expense1.svg" alt="img">
+                                <span>Payments</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <ul>
+                                <li><a href="/pay_vendor"
+                                        class="{{ 'active' if request.path == '/pay_vendor' else '' }}">Pay Vendor</a>
+                                </li>
+                                <li><a href="/payment_receipt"
+                                        class="{{ 'active' if request.path == '/payment_receipt' else '' }}">Payment
+                                        Receipt</a></li>
+                                <li><a href="/payment_record"
+                                        class="{{ 'active' if request.path == '/payment_record' else '' }}">Payment
+                                        Record</a></li>
+                                <li><a href="/pending_payments"
+                                        class="{{ 'active' if request.path == '/pending_payments' else '' }}">Pending
+                                        Payments</a></li>
+                            </ul>
+                        </li>
+
+                        <!-- Stock -->
+                        <li class="submenu">
+                            <a href="javascript:void(0);">
+                                <img src="../static/img/icons/sales1.svg" alt="img">
+                                <span>Stock</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <ul>
+                                <li><a href="/storageroom_stock"
+                                        class="{{ 'active' if request.path == '/storageroom_stock' else '' }}">Storage
+                                        Room Stock</a></li>
+                                <li><a href="/set_minimum_stock"
+                                        class="{{ 'active' if request.path == '/set_minimum_stock' else '' }}">Set
+                                        Minimum Stock</a></li>
+                                <li><a href="/stock_report"
+                                        class="{{ 'active' if request.path == '/stock_report' else '' }}">Stock
+                                        Report</a></li>
+                            </ul>
+                        </li>
                         {% endif %}
 
                         <!-- ========================================= -->
                         <!-- ADMIN FULL ACCESS VIEW -->
                         <!-- ========================================= -->
-                        {% if user.role == 'admin' or user.role == 'store_manager' %}
-
+                        {% if user.role == 'admin' %}
                         <!-- Storage Room -->
                         <li class="submenu">
                             <a href="javascript:void(0);">
@@ -419,9 +550,7 @@
                                 </li>
                             </ul>
                         </li>
-
                         {% endif %}
-
                     </ul>
                 </div>
             </div>

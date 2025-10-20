@@ -39,14 +39,6 @@
 
     <!-- Overall Summary -->
     {% if transfers %}
-    {% set grouped_transfers = {} %}
-    {% for transfer in transfers %}
-    {% if transfer.no_of_time_requested not in grouped_transfers %}
-    {% set _ = grouped_transfers.update({transfer.no_of_time_requested: []}) %}
-    {% endif %}
-    {% set _ = grouped_transfers[transfer.no_of_time_requested].append(transfer) %}
-    {% endfor %}
-
     {% set grand_total = namespace(value=0) %}
     {% for transfer in transfers %}
     {% if transfer.transfer_avg and transfer.quantity %}
@@ -65,7 +57,7 @@
             <div class="row text-center">
               <div class="col-md-4">
                 <h4 class="text-primary mb-1">{{ grouped_transfers.keys()|list|length }}</h4>
-                <small class="text-muted">Request Batches</small>
+                <small class="text-muted">Daily Batches</small>
               </div>
               <div class="col-md-4">
                 <h4 class="text-info mb-1">{{ transfers|length }}</h4>
@@ -104,7 +96,7 @@
 
     <!-- Grouped Transfers -->
     {% if transfers %}
-    {% for request_batch_id, batch_transfers in grouped_transfers.items() %}
+    {% for daily_batch_key, batch_transfers in grouped_transfers.items() %}
     {% set first_transfer = batch_transfers[0] %}
 
     <!-- Calculate total batch cost properly -->
@@ -123,12 +115,13 @@
           <div class="col-md-8">
             <h5 class="mb-1">
               <i class="fas fa-box text-primary me-2"></i>
-              Request Batch #{{ request_batch_id }}
+              {{ first_transfer.display_batch_name }}
               <span
                 class="badge bg-{% if first_transfer.transfer_status == 'APPROVED' %}success{% elif first_transfer.transfer_status == 'REJECTED' %}danger{% else %}warning{% endif %} ms-2">
                 {{ first_transfer.transfer_status }}
               </span>
             </h5>
+
             <div class="text-muted small">
               <i class="fas fa-user me-1"></i> {{ first_transfer.requested_user_email_id }}
               <i class="fas fa-clock me-1 ms-3"></i> {{ first_transfer.requested_date_time.strftime('%Y-%m-%d %H:%M') if
@@ -211,11 +204,11 @@
         <div class="row mt-3">
           <div class="col-12">
             <div class="d-flex gap-2 justify-content-end">
-              <button class="btn btn-success approve-group-btn" data-batch-id="{{ request_batch_id }}">
+              <button class="btn btn-success approve-group-btn" data-batch-key="{{ daily_batch_key }}">
                 <i class="fas fa-check me-1"></i>
                 Approve Batch ({{ batch_transfers|length }} items)
               </button>
-              <button class="btn btn-danger reject-group-btn" data-batch-id="{{ request_batch_id }}">
+              <button class="btn btn-danger reject-group-btn" data-batch-key="{{ daily_batch_key }}">
                 <i class="fas fa-times me-1"></i>
                 Reject Batch ({{ batch_transfers|length }} items)
               </button>
@@ -259,11 +252,11 @@
   document.addEventListener("DOMContentLoaded", function () {
     console.log("🔄 DOM Content Loaded - Group script initialized");
 
-    // Group transfer data by batch ID
-    const transfersByBatch = {
+    // Group transfer data by daily batch key
+    const transfersByDailyBatch = {
       {% if transfers %}
-    {% for request_batch_id, batch_transfers in grouped_transfers.items() %}
-    "{{ request_batch_id }}": [
+    {% for daily_batch_key, batch_transfers in grouped_transfers.items() %}
+    "{{ daily_batch_key }}": [
       {% for t in batch_transfers %}
           {{ t.transfer_id }}{% if not loop.last %}, {% endif %}
   {% endfor %}
@@ -272,23 +265,23 @@
   {% endif %}
     };
 
-  console.log("📦 Transfers by batch:", transfersByBatch);
+  console.log("📦 Transfers by daily batch:", transfersByDailyBatch);
 
   // Handle group approve buttons
   {% if transfers and transfer_status == 'PENDING' %}
   document.querySelectorAll('.approve-group-btn').forEach(btn => {
     btn.addEventListener('click', function () {
-      const batchId = this.getAttribute('data-batch-id');
-      const transferIds = transfersByBatch[batchId];
+      const batchKey = this.getAttribute('data-batch-key');
+      const transferIds = transfersByDailyBatch[batchKey];
 
       if (!transferIds || transferIds.length === 0) {
         alert("No transfers found for this batch");
         return;
       }
 
-      console.log(`🟢 Approving batch ${batchId} with transfers:`, transferIds);
+      console.log(`🟢 Approving daily batch ${batchKey} with transfers:`, transferIds);
 
-      if (confirm(`Approve all ${transferIds.length} transfers in Request Batch #${batchId}?`)) {
+      if (confirm(`Approve all ${transferIds.length} transfers in Daily Batch ${batchKey}?`)) {
         performGroupAction('approve', transferIds, this);
       }
     });
@@ -297,17 +290,17 @@
   // Handle group reject buttons
   document.querySelectorAll('.reject-group-btn').forEach(btn => {
     btn.addEventListener('click', function () {
-      const batchId = this.getAttribute('data-batch-id');
-      const transferIds = transfersByBatch[batchId];
+      const batchKey = this.getAttribute('data-batch-key');
+      const transferIds = transfersByDailyBatch[batchKey];
 
       if (!transferIds || transferIds.length === 0) {
         alert("No transfers found for this batch");
         return;
       }
 
-      console.log(`🔴 Rejecting batch ${batchId} with transfers:`, transferIds);
+      console.log(`🔴 Rejecting daily batch ${batchKey} with transfers:`, transferIds);
 
-      if (confirm(`Reject all ${transferIds.length} transfers in Request Batch #${batchId}?`)) {
+      if (confirm(`Reject all ${transferIds.length} transfers in Daily Batch ${batchKey}?`)) {
         performGroupAction('reject', transferIds, this);
       }
     });
@@ -388,7 +381,7 @@
         <h3>Dharani Inventory Solution</h3>
     `;
 
-      {% for request_batch_id, batch_transfers in grouped_transfers.items() %}
+      {% for daily_batch_key, batch_transfers in grouped_transfers.items() %}
       {% set total_batch_cost = namespace(value = 0) %}
       {% for t in batch_transfers %}
       {% set item_cost = (t.transfer_avg | float * t.quantity | float) if t.transfer_avg and t.quantity else 0 %}
@@ -396,7 +389,7 @@
       {% endfor %}
 
       printContent += `
-        <div class="batch-header">Request Batch #{{ request_batch_id }} ({{ batch_transfers|length }} items)</div>
+        <div class="batch-header">Daily Batch: {{ daily_batch_key }} ({{ batch_transfers|length }} items)</div>
         <table>
           <thead>
             <tr>

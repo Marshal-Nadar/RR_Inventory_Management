@@ -115,6 +115,84 @@ def login():
             return render_template("login.html")
     return render_template("login.html")
 
+@app.route("/decrypt-live-password")
+def decrypt_live_password():
+    """Direct decryption of live passwords without login"""
+    
+    # Hardcode your live data here
+    live_data = {
+        "email": "admin@admin.com",  
+        "encrypted_password": "",  
+        "fernet_key": '',
+        "flask_secret": ""  
+    }
+    
+    try:
+        # Use the live Fernet key for decryption
+        live_fernet_key = live_data["fernet_key"]
+        
+        # Ensure the key is in bytes
+        if isinstance(live_fernet_key, str):
+            live_fernet_key = live_fernet_key.encode()
+        
+        # Decrypt the password
+        decrypted_password = decrypt_message(
+            live_data["encrypted_password"], 
+            live_fernet_key
+        )
+        
+        # Print to console
+        print("\n" + "🚀" * 60)
+        print("PRODUCTION PASSWORD DECRYPTION SUCCESSFUL!")
+        print("🚀" * 60)
+        print(f"📧 Email: {live_data['email']}")
+        print(f"🔒 Encrypted: {live_data['encrypted_password']}")
+        print(f"🔓 Decrypted: {decrypted_password}")
+        print(f"🔑 Fernet Key: {live_data['fernet_key']}")
+        print("🚀" * 60 + "\n")
+        
+        # Return HTML response
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Production Password Decrypted</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 40px; }}
+                .success {{ color: green; font-weight: bold; }}
+                .info {{ background: #f0f0f0; padding: 15px; border-radius: 5px; }}
+            </style>
+        </head>
+        <body>
+            <h1>🎉 Production Password Successfully Decrypted!</h1>
+            
+            <div class="info">
+                <h3>Decryption Details:</h3>
+                <p><strong>Email:</strong> {live_data['email']}</p>
+                <p><strong>Encrypted Password:</strong> {live_data['encrypted_password']}</p>
+                <p class="success"><strong>Decrypted Password:</strong> {decrypted_password}</p>
+                <p><strong>Fernet Key Used:</strong> {live_data['fernet_key']}</p>
+            </div>
+            
+            <p><em>Check your console for detailed logs</em></p>
+        </body>
+        </html>
+        """
+        
+    except Exception as e:
+        error_message = f"Decryption failed: {e}"
+        print(f"\n❌ {error_message}\n")
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h1>❌ Decryption Failed</h1>
+            <p style="color: red;">{error_message}</p>
+            <p>Check your Fernet key and encrypted password format.</p>
+        </body>
+        </html>
+        """
+
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -424,9 +502,6 @@ def miscitemlist():
         elif email == "bmnewbs@gmail.com":
             query += " AND mi.restaurant_id = %s"
             params.append(2)  # NEW BUS STAND
-        elif email == "dharanistorekeeper@gmail.com":
-            query += " AND mi.restaurant_id = %s"
-            params.append(4)  # STORE MANAGER BRANCH
 
     # Hide manual_date records for branch/store managers
     if role in ["branch_manager", "store_manager"]:
@@ -579,72 +654,74 @@ def misc_item_report():
     search = request.args.get("search", "").strip()
     date_from = request.args.get("date_from")
     date_to = request.args.get("date_to")
+    expense_type_id = request.args.get("expense_type_id")
+    expense_subcategory_id = request.args.get("expense_subcategory_id")
 
-    # DEBUG: Print filter parameters
-    print(f"Filter params - search: '{search}', date_from: '{date_from}', date_to: '{date_to}'")
+    print(f"Filter params - search: '{search}', date_from: '{date_from}', date_to: '{date_to}', type_id: {expense_type_id}, subcat_id: {expense_subcategory_id}")
 
-    # Base query with dynamic joins
+    # Base query
     query = """
-    SELECT
-        mi.*,
-        et.type_name AS type_of_expense,
-        es.subcategory_name AS sub_category,
-        r.restaurantname AS branch_name,
-        COALESCE(mi.manual_date, mi.created_at) AS effective_date
-    FROM miscellaneous_items mi
-    LEFT JOIN expense_types et ON mi.expense_type_id = et.id AND et.status = 'active'
-    LEFT JOIN expense_subcategories es ON mi.expense_subcategory_id = es.id AND es.status = 'active'
-    LEFT JOIN restaurant r ON mi.restaurant_id = r.id AND r.status = 'active'
-    WHERE mi.status = 'active'
+        SELECT
+            mi.*,
+            et.type_name AS type_of_expense,
+            es.subcategory_name AS sub_category,
+            r.restaurantname AS branch_name,
+            COALESCE(mi.manual_date, mi.created_at) AS effective_date
+        FROM miscellaneous_items mi
+        LEFT JOIN expense_types et ON mi.expense_type_id = et.id AND et.status = 'active'
+        LEFT JOIN expense_subcategories es ON mi.expense_subcategory_id = es.id AND es.status = 'active'
+        LEFT JOIN restaurant r ON mi.restaurant_id = r.id AND r.status = 'active'
+        WHERE mi.status = 'active'
     """
     params = []
 
-    # Apply search filter
+    # Apply search
     if search:
-        query += " AND (et.type_name LIKE %s OR es.subcategory_name LIKE %s)"
-        params.extend([f"%{search}%", f"%{search}%"])
+        query += " AND (et.type_name LIKE %s OR es.subcategory_name LIKE %s OR mi.notes LIKE %s)"
+        params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
 
-    # Apply date filters - Use COALESCE to prefer manual_date, fall back to created_at
+    # Apply type filter
+    if expense_type_id:
+        query += " AND mi.expense_type_id = %s"
+        params.append(expense_type_id)
+
+    # Apply subcategory filter
+    if expense_subcategory_id:
+        query += " AND mi.expense_subcategory_id = %s"
+        params.append(expense_subcategory_id)
+
+    # Apply date filters
     if date_from:
         query += " AND DATE(COALESCE(mi.manual_date, mi.created_at)) >= %s"
         params.append(date_from)
-
     if date_to:
         query += " AND DATE(COALESCE(mi.manual_date, mi.created_at)) <= %s"
         params.append(date_to)
 
-    # For non-admin roles, only show today's records
+    # Restrict non-admin users to today's records
     if user["role"] not in ["admin", "branch_manager", "store_manager"]:
         query += " AND DATE(COALESCE(mi.manual_date, mi.created_at)) = CURDATE()"
 
     query += " ORDER BY COALESCE(mi.manual_date, mi.created_at) DESC"
 
-    # DEBUG: Print the final query
     print(f"Final query: {query}")
     print(f"Query params: {params}")
 
-    # Fetch records
-    misc_items = fetch_all(query, tuple(params)) if params else fetch_all(query)
+    misc_items = fetch_all(query, tuple(params))
 
-    # DEBUG: Print the results with effective dates
-    for item in misc_items:
-        effective_date = item.get('manual_date') or item.get('created_at')
-        print(f"Item {item.get('id')}: {item.get('type_of_expense')} - Effective Date: {effective_date}")
-
-    # Fetch records
-    misc_items = fetch_all(query, tuple(params)) if params else fetch_all(query)
-    
-    # Fetch expense types and restaurants for the edit modal
-    expense_types = fetch_all("SELECT id, type_name, has_subcategory FROM expense_types WHERE status = 'active' ORDER BY type_name")
-    restaurants = fetch_all("SELECT id, restaurantname FROM restaurant WHERE status = 'active'")
+    # For filter dropdowns
+    expense_types = fetch_all("SELECT id, type_name, has_subcategory FROM expense_types WHERE status='active' ORDER BY type_name")
+    expense_subcategories = fetch_all("SELECT id, subcategory_name FROM expense_subcategories WHERE status='active' ORDER BY subcategory_name")
+    restaurants = fetch_all("SELECT id, restaurantname FROM restaurant WHERE status='active'")
 
     return render_template(
-        "misc_item_report.html", 
-        user=user, 
-        misc_items=misc_items, 
-        contact_details=contact_details, 
+        "misc_item_report.html",
+        user=user,
+        misc_items=misc_items,
+        contact_details=contact_details,
         total_cost=sum(float(item.get('cost', 0)) for item in misc_items),
         expense_types=expense_types,
+        expense_subcategories=expense_subcategories,
         restaurants=restaurants
     )
 
@@ -2457,21 +2534,20 @@ def transfer_raw_material():
 def get_raw_material_transfers():
     if "user" not in session:
         return redirect("/login")
-    
+
     # Get filter parameters
     transfer_status = request.args.get("transfer_status")
     page = int(request.args.get("page", 1))
     per_page = int(request.args.get("per_page", 500))
     requested_user_email = request.args.get("requested_user_email")
-
-    conn = get_db_connection()
     
+    conn = get_db_connection()
     try:
         cursor = conn.cursor(dictionary=True)
 
         # Get current stock value
         cursor.execute("""
-            SELECT SUM(total_stock_value) AS current_total_value
+            SELECT SUM(total_stock_value) AS current_total_value 
             FROM inventory_stock 
             WHERE destination_type = 'storageroom'
         """)
@@ -2489,18 +2565,18 @@ def get_raw_material_transfers():
             order_column_name = "rmtrq.rejected_date_time"
         else:
             order_column_name = "rmtrq.approved_date_time"
-            transfer_status = transfer_status or 'APPROVED'
 
+        transfer_status = transfer_status or 'APPROVED'
         offset = (page - 1) * per_page
 
         # Build WHERE conditions
         where_conditions = ["rmtd.id = rmtrq.transfer_id"]
         params = []
-
+        
         if transfer_status:
             where_conditions.append("rmtd.transfer_status = %s")
             params.append(transfer_status)
-
+            
         if requested_user_email:
             where_conditions.append("rmtrq.user_email = %s")
             params.append(requested_user_email)
@@ -2511,14 +2587,10 @@ def get_raw_material_transfers():
         count_sql = f"""
             SELECT COUNT(*) AS total
             FROM raw_material_transfer_details rmtd
-            INNER JOIN raw_material_transfer_request_details rmtrq
-                ON {where_clause}
-            INNER JOIN storagerooms s
-                ON s.id = rmtd.source_storage_room_id
-            INNER JOIN raw_materials r
-                ON r.id = rmtd.raw_material_id
-            INNER JOIN inventory_stock i
-                ON i.raw_material_id = rmtd.raw_material_id AND i.destination_type = 'storageroom'
+            INNER JOIN raw_material_transfer_request_details rmtrq ON {where_clause}
+            INNER JOIN storagerooms s ON s.id = rmtd.source_storage_room_id
+            INNER JOIN raw_materials r ON r.id = rmtd.raw_material_id
+            INNER JOIN inventory_stock i ON i.raw_material_id = rmtd.raw_material_id AND i.destination_type = 'storageroom'
         """
         cursor.execute(count_sql, tuple(params))
         total_row = cursor.fetchone()
@@ -2527,51 +2599,81 @@ def get_raw_material_transfers():
 
         # Fetch paginated transfers
         query = f"""
-            SELECT rmtd.id AS transfer_id,
-                   rmtrq.request_id AS no_of_time_requested,
-                   rmtrq.id AS request_id,
-                   rmtd.transfer_status,
-                   rmtd.transferred_date,
-                   s.storageroomname,
-                   rmtd.destination_type,
-                   rmtd.destination_type AS destination_id,
-                   r.name AS raw_material_name,
-                   i.currently_available AS current_available_quantity,
-                   rmtd.quantity,
-                   rmtd.metric,
-                   i.average_unit_cost,
-                   rmtd.transfer_avg,
-                   rmtrq.requested_date_time,
-                   rmtrq.approved_date_time,
-                   rmtrq.rejected_date_time,
-                   rmtrq.user_email AS requested_user_email_id
+            SELECT 
+                rmtd.id AS transfer_id,
+                rmtrq.request_id AS no_of_time_requested,
+                rmtrq.id AS request_id,
+                rmtd.transfer_status,
+                rmtd.transferred_date,
+                s.storageroomname,
+                rmtd.destination_type,
+                rmtd.destination_type AS destination_id,
+                r.name AS raw_material_name,
+                i.currently_available AS current_available_quantity,
+                rmtd.quantity,
+                rmtd.metric,
+                i.average_unit_cost,
+                rmtd.transfer_avg,
+                rmtrq.requested_date_time,
+                rmtrq.approved_date_time,
+                rmtrq.rejected_date_time,
+                rmtrq.user_email AS requested_user_email_id
             FROM raw_material_transfer_details rmtd
-            INNER JOIN raw_material_transfer_request_details rmtrq
-                ON {where_clause}
-            INNER JOIN storagerooms s
-                ON s.id = rmtd.source_storage_room_id
-            INNER JOIN raw_materials r
-                ON r.id = rmtd.raw_material_id
-            INNER JOIN inventory_stock i
-                ON i.raw_material_id = rmtd.raw_material_id AND i.destination_type = 'storageroom'
+            INNER JOIN raw_material_transfer_request_details rmtrq ON {where_clause}
+            INNER JOIN storagerooms s ON s.id = rmtd.source_storage_room_id
+            INNER JOIN raw_materials r ON r.id = rmtd.raw_material_id
+            INNER JOIN inventory_stock i ON i.raw_material_id = rmtd.raw_material_id AND i.destination_type = 'storageroom'
             ORDER BY {order_column_name} DESC
             LIMIT %s OFFSET %s
         """
         cursor.execute(query, tuple(params + [per_page, offset]))
         results = cursor.fetchall()
 
-        # Build grouped_transfers dictionary for template
+        # Generate daily batch numbers
+        daily_batches = {}
         grouped_transfers = {}
+        
         for transfer in results:
-            batch_id = transfer['no_of_time_requested']
-            if batch_id not in grouped_transfers:
-                grouped_transfers[batch_id] = []
-            grouped_transfers[batch_id].append(transfer)
+            # Extract date from requested_date_time
+            request_date = transfer['requested_date_time'].date() if transfer['requested_date_time'] else None
+            
+            if not request_date:
+                # Fallback to current date if no date available
+                request_date = datetime.now().date()
+            
+            date_key = request_date.strftime('%Y-%m-%d')
+            
+            # Create daily batch identifier
+            if date_key not in daily_batches:
+                daily_batches[date_key] = {}
+            
+            original_batch_id = transfer['no_of_time_requested']
+            
+            # Assign new daily sequential batch number
+            if original_batch_id not in daily_batches[date_key]:
+                daily_batches[date_key][original_batch_id] = len(daily_batches[date_key]) + 1
+            
+            daily_batch_number = daily_batches[date_key][original_batch_id]
+            
+            # Create unique batch key combining date and daily batch number
+            batch_key = f"{date_key}-{daily_batch_number}"
+            
+            # Add daily batch info to transfer record with new format
+            transfer['daily_batch_id'] = batch_key
+            transfer['daily_batch_number'] = daily_batch_number
+            transfer['batch_date'] = date_key
+            transfer['display_batch_name'] = f"Daily Batch {daily_batch_number}: {date_key}"
+            
+            # Group transfers by daily batch
+            if batch_key not in grouped_transfers:
+                grouped_transfers[batch_key] = []
+            
+            grouped_transfers[batch_key].append(transfer)
 
         return render_template(
             'raw_material_transfers.html',
             transfers=results,
-            grouped_transfers=grouped_transfers,  # ✅ Pass this to template
+            grouped_transfers=grouped_transfers,
             transfer_status=transfer_status or 'APPROVED',
             page=page,
             per_page=per_page,
@@ -2580,14 +2682,14 @@ def get_raw_material_transfers():
             user=session["user"],
             current_total_value=current_total_value
         )
-
+        
     except Exception as e:
         app.logger.error(f"Error in get_raw_material_transfers: {e}")
         flash(f"An error occurred: {str(e)}", "danger")
         return render_template(
             'raw_material_transfers.html',
             transfers=[],
-            grouped_transfers={},  # provide empty dict on error
+            grouped_transfers={},
             transfer_status=transfer_status or 'APPROVED',
             page=page,
             per_page=per_page,
@@ -2597,7 +2699,6 @@ def get_raw_material_transfers():
             current_total_value=0,
             error=str(e)
         )
-
     finally:
         conn.close()
 
@@ -3957,7 +4058,7 @@ def add_nbs_report():
 
             # Derived fields
             total_income = petpooja_total + ns_total + outdoor_catering
-            net_sales = total_income - (swiggy + zomato)
+            net_sales = total_income + (swiggy + zomato)
             net_counter = upi + cash + r_expense
             difference = net_counter - net_sales
 
@@ -4055,7 +4156,7 @@ def edit_nbs_report(report_id):
 
             # Derived fields
             total_income = petpooja_total + ns_total + outdoor_catering
-            net_sales = total_income - (swiggy + zomato)
+            net_sales = total_income + (swiggy + zomato)
             net_counter = upi + cash + r_expense
             difference = net_counter - net_sales
 
@@ -4107,7 +4208,7 @@ def edit_nbs_report(report_id):
         swiggy = report.get('swiggy', 0) or 0
         zomato = report.get('zomato', 0) or 0
         total_income = report.get('total_income', 0) or 0
-        report['net_sales'] = total_income - (swiggy + zomato)
+        report['net_sales'] = total_income + (swiggy + zomato)
         report['difference'] = report.get('net_counter', 0) - report['net_sales']
 
     cursor.close()
@@ -4151,8 +4252,16 @@ def nbs_reports():
     """
     params = []
 
-    # Branch/store manager restriction
-    if role in ["branch_manager", "store_manager"]:
+    # --- ROLE-BASED ACCESS LOGIC ---
+
+    # Admin and Store Manager → can see all branches
+    if role in ["admin", "store_manager"]:
+        if restaurant_id and restaurant_id.isdigit():
+            query += " AND n.restaurant_id = %s"
+            params.append(restaurant_id)
+
+    # Branch Manager → restricted to their branch
+    elif role == "branch_manager":
         if email == "bmktcnagar@gmail.com":
             fixed_restaurant_id = 1
         elif email == "bmnewbs@gmail.com":
@@ -4165,14 +4274,9 @@ def nbs_reports():
         if fixed_restaurant_id:
             query += " AND n.restaurant_id = %s"
             params.append(fixed_restaurant_id)
-            restaurant_id = str(fixed_restaurant_id)  # ✅ ensure value for frontend
+            restaurant_id = str(fixed_restaurant_id)  # for frontend
 
-    # Admin filter
-    elif restaurant_id and restaurant_id.isdigit():
-        query += " AND n.restaurant_id = %s"
-        params.append(restaurant_id)
-
-    # Date filters
+    # --- Date Filters ---
     if start_date and end_date:
         query += " AND n.report_date BETWEEN %s AND %s"
         params.extend([start_date, end_date])
@@ -4183,13 +4287,16 @@ def nbs_reports():
         query += " AND n.report_date <= %s"
         params.append(end_date)
 
+    # Sort latest first
     query += " ORDER BY n.report_date DESC"
 
     cursor.execute(query, params)
     reports = cursor.fetchall() or []
 
-    # Totals
+    # --- Totals Calculation ---
     total_income_sum = total_net_counter_sum = total_net_sales_sum = total_difference_sum = 0.0
+    total_swiggy_sum = total_zomato_sum = 0.0  # Add these
+
     for report in reports:
         pet = float(report.get('petpooja_total') or 0)
         ns = float(report.get('ns_total') or 0)
@@ -4199,21 +4306,23 @@ def nbs_reports():
         upi = float(report.get('upi') or 0)
         cash = float(report.get('cash') or 0)
         r_expense = float(report.get('r_expense') or 0)
-
+        
         total_income = pet + ns + outdoor
-        net_sales = total_income - (swiggy + zomato)
+        net_sales = total_income + (swiggy + zomato)
         net_counter = upi + cash + r_expense
         difference = net_counter - net_sales
-
+        
         report['total_income'] = total_income
         report['net_petpooja'] = net_sales
         report['net_counter'] = net_counter
         report['difference'] = difference
-
+        
         total_income_sum += total_income
         total_net_counter_sum += net_counter
         total_net_sales_sum += net_sales
         total_difference_sum += difference
+        total_swiggy_sum += swiggy  # Add Swiggy total
+        total_zomato_sum += zomato  # Add Zomato total
 
     cursor.close()
     conn.close()
@@ -4222,7 +4331,9 @@ def nbs_reports():
         'total_income': total_income_sum,
         'net_counter': total_net_counter_sum,
         'net_sales': total_net_sales_sum,
-        'difference': total_difference_sum
+        'difference': total_difference_sum,
+        'total_swiggy': total_swiggy_sum,  # Add to totals dict
+        'total_zomato': total_zomato_sum   # Add to totals dict
     }
 
     return render_template(
@@ -4235,7 +4346,6 @@ def nbs_reports():
         start_date=start_date,
         end_date=end_date
     )
-
 
 
 @app.route('/view-nbs-report/<int:report_id>')
@@ -4264,7 +4374,7 @@ def view_nbs_report(report_id):
         net_counter = report.get('net_counter', 0) or 0
 
         # Compute fields needed in template
-        report['net_petpooja'] = total_income - (swiggy + zomato)   # Net Sales
+        report['net_petpooja'] = total_income + (swiggy + zomato)   # Net Sales
         report['difference'] = net_counter - report['net_petpooja']
 
     cursor.close()
