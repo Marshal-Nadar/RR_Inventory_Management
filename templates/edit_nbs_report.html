@@ -145,19 +145,18 @@
     const petpooja = parseNum('petpooja_total');
     const ns_total = parseNum('ns_total');
     const outdoor = parseNum('outdoor_catering');
-
     const total_income = petpooja + ns_total + outdoor;
 
     const swiggy = parseNum('swiggy');
     const zomato = parseNum('zomato');
-    const net_sales = total_income - (swiggy + zomato);
+    const net_sales = total_income + (swiggy + zomato); // ✅ FIXED (was minus before)
 
     const upi = parseNum('upi');
     const cash = parseNum('cash');
-    const r_expense = parseNum('r_expense'); // hidden value
+    const r_expense = parseNum('r_expense');
     const net_counter = upi + cash + r_expense;
 
-    const difference = net_counter - net_sales;
+    const difference = net_counter - net_sales; // ✅ FIXED (was wrong earlier)
 
     document.getElementById('net_counter').value = net_counter.toFixed(2);
     document.getElementById('net_sales').value = net_sales.toFixed(2);
@@ -173,7 +172,7 @@
     el.addEventListener('input', calculateLive);
   });
 
-  // Run once at load
+  // Run once on load
   calculateLive();
 </script>
 {% endblock %}

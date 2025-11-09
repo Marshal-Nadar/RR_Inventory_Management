@@ -651,13 +651,11 @@ def misc_item_report():
     contact_details = get_contact_details()
 
     # Get filter parameters
-    search = request.args.get("search", "").strip()
     date_from = request.args.get("date_from")
     date_to = request.args.get("date_to")
     expense_type_id = request.args.get("expense_type_id")
     expense_subcategory_id = request.args.get("expense_subcategory_id")
-
-    print(f"Filter params - search: '{search}', date_from: '{date_from}', date_to: '{date_to}', type_id: {expense_type_id}, subcat_id: {expense_subcategory_id}")
+    restaurant_id = request.args.get("restaurant_id")  # ← NEW
 
     # Base query
     query = """
@@ -675,22 +673,19 @@ def misc_item_report():
     """
     params = []
 
-    # Apply search
-    if search:
-        query += " AND (et.type_name LIKE %s OR es.subcategory_name LIKE %s OR mi.notes LIKE %s)"
-        params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
-
-    # Apply type filter
+    # Apply filters
     if expense_type_id:
         query += " AND mi.expense_type_id = %s"
         params.append(expense_type_id)
 
-    # Apply subcategory filter
     if expense_subcategory_id:
         query += " AND mi.expense_subcategory_id = %s"
         params.append(expense_subcategory_id)
 
-    # Apply date filters
+    if restaurant_id:  # ← NEW FILTER
+        query += " AND mi.restaurant_id = %s"
+        params.append(restaurant_id)
+
     if date_from:
         query += " AND DATE(COALESCE(mi.manual_date, mi.created_at)) >= %s"
         params.append(date_from)
@@ -698,21 +693,17 @@ def misc_item_report():
         query += " AND DATE(COALESCE(mi.manual_date, mi.created_at)) <= %s"
         params.append(date_to)
 
-    # Restrict non-admin users to today's records
+    # Restrict non-admin users
     if user["role"] not in ["admin", "branch_manager", "store_manager"]:
         query += " AND DATE(COALESCE(mi.manual_date, mi.created_at)) = CURDATE()"
 
     query += " ORDER BY COALESCE(mi.manual_date, mi.created_at) DESC"
 
-    print(f"Final query: {query}")
-    print(f"Query params: {params}")
-
     misc_items = fetch_all(query, tuple(params))
 
-    # For filter dropdowns
+    # Dropdown data
     expense_types = fetch_all("SELECT id, type_name, has_subcategory FROM expense_types WHERE status='active' ORDER BY type_name")
-    expense_subcategories = fetch_all("SELECT id, subcategory_name FROM expense_subcategories WHERE status='active' ORDER BY subcategory_name")
-    restaurants = fetch_all("SELECT id, restaurantname FROM restaurant WHERE status='active'")
+    restaurants = fetch_all("SELECT id, restaurantname FROM restaurant WHERE status='active' ORDER BY restaurantname")
 
     return render_template(
         "misc_item_report.html",
@@ -721,7 +712,6 @@ def misc_item_report():
         contact_details=contact_details,
         total_cost=sum(float(item.get('cost', 0)) for item in misc_items),
         expense_types=expense_types,
-        expense_subcategories=expense_subcategories,
         restaurants=restaurants
     )
 
@@ -1912,6 +1902,62 @@ def add_purchase():
                 )
 
             #  Commit all changes after successful operations
+            connection.commit()
+
+            # Now recalculate stock value and average cost
+            cursor.execute("""
+            WITH ordered_purchases AS (
+                SELECT
+                    ph.id,
+                    ph.raw_material_id,
+                    ph.quantity,
+                    ph.total_cost,
+                    SUM(ph.quantity) OVER (
+                        PARTITION BY ph.raw_material_id
+                        ORDER BY ph.id DESC
+                    ) AS running_qty,
+                    COALESCE(SUM(ph.quantity) OVER (
+                        PARTITION BY ph.raw_material_id
+                        ORDER BY ph.id DESC ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                    ), 0) AS prev_running_qty
+                FROM purchase_history ph
+            ),
+            matched_costs AS (
+                SELECT
+                    i.id AS inventory_id,
+                    SUM(
+                        CASE
+                            WHEN o.running_qty <= i.currently_available
+                                THEN o.total_cost
+                            WHEN o.prev_running_qty < i.currently_available AND o.running_qty > i.currently_available
+                                THEN ( (i.currently_available - o.prev_running_qty) / NULLIF(o.quantity,0) ) * o.total_cost
+                            ELSE 0
+                        END
+                    ) AS calc_total_stock_value
+                FROM inventory_stock i
+                JOIN ordered_purchases o
+                    ON i.raw_material_id = o.raw_material_id
+                WHERE i.destination_type = 'storageroom'
+                GROUP BY i.id
+            )
+            UPDATE inventory_stock i
+            JOIN matched_costs m
+                ON i.id = m.inventory_id
+            SET
+                i.total_stock_value = ROUND(m.calc_total_stock_value, 2),
+                i.updated_at = NOW()
+            WHERE i.destination_type = 'storageroom';
+            """)
+
+            cursor.execute("""
+            UPDATE inventory_stock
+            SET average_unit_cost = (total_stock_value / currently_available)
+            WHERE destination_type = 'storageroom'
+            AND currently_available > 0;
+            """)
+
+            print("DONEDONEDONEDONEDONEDONEDONE")
+
             connection.commit()
             cursor.close()
             connection.close()
@@ -4154,7 +4200,7 @@ def edit_nbs_report(report_id):
             swiggy = float(request.form['swiggy'] or 0)
             zomato = float(request.form['zomato'] or 0)
 
-            # Derived fields
+            # Derived fields (✅ Fixed logic)
             total_income = petpooja_total + ns_total + outdoor_catering
             net_sales = total_income + (swiggy + zomato)
             net_counter = upi + cash + r_expense
@@ -4197,19 +4243,16 @@ def edit_nbs_report(report_id):
     report = cursor.fetchone()
 
     # Map restaurant_id to name for display
-    restaurant_name = None
     if report:
-        for r in restaurants:
-            if r['id'] == report['restaurant_id']:
-                restaurant_name = r['restaurantname']
-                break
+        restaurant_name = next((r['restaurantname'] for r in restaurants if r['id'] == report['restaurant_id']), None)
         report['restaurant_name'] = restaurant_name
-        # Derived fields
+
+        # ✅ Recalculate with correct logic
         swiggy = report.get('swiggy', 0) or 0
         zomato = report.get('zomato', 0) or 0
         total_income = report.get('total_income', 0) or 0
         report['net_sales'] = total_income + (swiggy + zomato)
-        report['difference'] = report.get('net_counter', 0) - report['net_sales']
+        report['difference'] = (report.get('net_counter', 0) or 0) - report['net_sales']
 
     cursor.close()
     conn.close()
@@ -4234,68 +4277,74 @@ def nbs_reports():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Fetch restaurants (for filter dropdown)
+    # --- Pagination Setup ---
+    per_page = 40
+    page = int(request.args.get("page", 1))
+    offset = (page - 1) * per_page
+
+    # --- Restaurant Dropdown ---
     cursor.execute("SELECT id, restaurantname FROM restaurant ORDER BY restaurantname")
     restaurants = cursor.fetchall()
 
-    # Filters
+    # --- Filters ---
     restaurant_id = request.args.get("restaurant_id")
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
 
-    # Base query
-    query = """
-    SELECT n.*, r.restaurantname
-    FROM nbs_daily_reports n
-    LEFT JOIN restaurant r ON n.restaurant_id = r.id
-    WHERE 1=1
+    # --- Base Query ---
+    base_query = """
+        FROM nbs_daily_reports n
+        LEFT JOIN restaurant r ON n.restaurant_id = r.id
+        WHERE 1=1
     """
     params = []
 
-    # --- ROLE-BASED ACCESS LOGIC ---
-
-    # Admin and Store Manager → can see all branches
+    # --- ROLE-BASED ACCESS ---
     if role in ["admin", "store_manager"]:
         if restaurant_id and restaurant_id.isdigit():
-            query += " AND n.restaurant_id = %s"
+            base_query += " AND n.restaurant_id = %s"
             params.append(restaurant_id)
-
-    # Branch Manager → restricted to their branch
     elif role == "branch_manager":
-        if email == "bmktcnagar@gmail.com":
-            fixed_restaurant_id = 1
-        elif email == "bmnewbs@gmail.com":
-            fixed_restaurant_id = 2
-        elif email == "dharanistorekeeper@gmail.com":
-            fixed_restaurant_id = 4
-        else:
-            fixed_restaurant_id = None
-
+        email_to_restaurant = {
+            "bmktcnagar@gmail.com": 1,
+            "bmnewbs@gmail.com": 2,
+            "dharanistorekeeper@gmail.com": 4
+        }
+        fixed_restaurant_id = email_to_restaurant.get(email)
         if fixed_restaurant_id:
-            query += " AND n.restaurant_id = %s"
+            base_query += " AND n.restaurant_id = %s"
             params.append(fixed_restaurant_id)
-            restaurant_id = str(fixed_restaurant_id)  # for frontend
+            restaurant_id = str(fixed_restaurant_id)
 
     # --- Date Filters ---
     if start_date and end_date:
-        query += " AND n.report_date BETWEEN %s AND %s"
+        base_query += " AND n.report_date BETWEEN %s AND %s"
         params.extend([start_date, end_date])
     elif start_date:
-        query += " AND n.report_date >= %s"
+        base_query += " AND n.report_date >= %s"
         params.append(start_date)
     elif end_date:
-        query += " AND n.report_date <= %s"
+        base_query += " AND n.report_date <= %s"
         params.append(end_date)
 
-    # Sort latest first
-    query += " ORDER BY n.report_date DESC"
+    # --- Total Records Count ---
+    cursor.execute(f"SELECT COUNT(*) as total {base_query}", params)
+    total_records = cursor.fetchone()["total"]
+    total_pages = (total_records + per_page - 1) // per_page
 
-    cursor.execute(query, params)
+    # --- Fetch Paginated Reports ---
+    query = f"""
+        SELECT n.*, r.restaurantname
+        {base_query}
+        ORDER BY n.report_date DESC
+        LIMIT %s OFFSET %s
+    """
+    cursor.execute(query, (*params, per_page, offset))
     reports = cursor.fetchall() or []
 
-    # --- Totals Calculation ---
+    # --- Totals ---
     total_income_sum = total_net_counter_sum = total_net_sales_sum = total_difference_sum = 0.0
-    total_swiggy_sum = total_zomato_sum = 0.0  # Add these
+    total_swiggy_sum = total_zomato_sum = 0.0
 
     for report in reports:
         pet = float(report.get('petpooja_total') or 0)
@@ -4311,18 +4360,18 @@ def nbs_reports():
         net_sales = total_income + (swiggy + zomato)
         net_counter = upi + cash + r_expense
         difference = net_counter - net_sales
-        
+
         report['total_income'] = total_income
         report['net_petpooja'] = net_sales
         report['net_counter'] = net_counter
         report['difference'] = difference
-        
+
         total_income_sum += total_income
         total_net_counter_sum += net_counter
         total_net_sales_sum += net_sales
         total_difference_sum += difference
-        total_swiggy_sum += swiggy  # Add Swiggy total
-        total_zomato_sum += zomato  # Add Zomato total
+        total_swiggy_sum += swiggy
+        total_zomato_sum += zomato
 
     cursor.close()
     conn.close()
@@ -4332,8 +4381,8 @@ def nbs_reports():
         'net_counter': total_net_counter_sum,
         'net_sales': total_net_sales_sum,
         'difference': total_difference_sum,
-        'total_swiggy': total_swiggy_sum,  # Add to totals dict
-        'total_zomato': total_zomato_sum   # Add to totals dict
+        'total_swiggy': total_swiggy_sum,
+        'total_zomato': total_zomato_sum
     }
 
     return render_template(
@@ -4344,7 +4393,9 @@ def nbs_reports():
         restaurants=restaurants,
         selected_restaurant=restaurant_id,
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
+        page=page,
+        total_pages=total_pages
     )
 
 
