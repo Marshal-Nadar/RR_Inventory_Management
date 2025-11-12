@@ -112,15 +112,15 @@
           <h5>Live Calculation Summary</h5>
           <div class="row">
             <div class="col-md-4">
-              <label>Net Counter</label>
-              <input type="text" class="form-control" id="net_counter" readonly>
-            </div>
-            <div class="col-md-4">
-              <label>Net Sales</label>
+              <label>Net Sales (Petpooja + NS + Outdoor)</label>
               <input type="text" class="form-control" id="net_sales" readonly>
             </div>
             <div class="col-md-4">
-              <label>Difference</label>
+              <label>Net Counter (UPI + Cash + Misc + Swiggy + Zomato)</label>
+              <input type="text" class="form-control" id="net_counter" readonly>
+            </div>
+            <div class="col-md-4">
+              <label>Difference (Counter - Sales)</label>
               <input type="text" class="form-control" id="difference" readonly>
             </div>
           </div>
@@ -191,26 +191,27 @@
 
     const total_income = petpooja + ns_total + outdoor;
 
-    // Online deductions
+    // Online platforms
     const swiggy = parseNum('swiggy');
     const zomato = parseNum('zomato');
 
-    // Net Sales = total_income - (swiggy + zomato)
-    const net_sales = total_income + (swiggy + zomato);
+    // NEW CALCULATION: Net Sales = total_income only (no swiggy/zomato)
+    const net_sales = total_income;
 
-    // Net Counter = upi + cash + misc_expense
+    // Payment methods
     const upi = parseNum('upi');
     const cash = parseNum('cash');
     const r_expense = parseNum('r_expense'); // hidden input
 
-    const net_counter = upi + cash + r_expense;
+    // NEW CALCULATION: Net Counter = upi + cash + misc_expense + swiggy + zomato
+    const net_counter = upi + cash + r_expense + swiggy + zomato;
 
     // Signed difference (Net Counter - Net Sales)
     const difference = net_counter - net_sales;
 
     // Update UI (2 decimal places)
-    document.getElementById('net_counter').value = net_counter.toFixed(2);
     document.getElementById('net_sales').value = net_sales.toFixed(2);
+    document.getElementById('net_counter').value = net_counter.toFixed(2);
     const diffEl = document.getElementById('difference');
     diffEl.value = difference.toFixed(2);
 
@@ -231,7 +232,5 @@
   // Initial run
   calculateLive();
 
-  // If your server-side code updates the hidden r_expense dynamically after load (via JS),
-  // make sure to call calculateLive() after changing #r_expense.value so UI updates.
 </script>
 {% endblock %}
