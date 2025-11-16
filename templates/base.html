@@ -101,6 +101,32 @@
                 </a>
               </li>
 
+              <li class="submenu">
+                <a href="javascript:void(0);">
+                  <img src="../static/img/icons/places.svg" alt="img" />
+                  <span>Pre-Booking</span>
+                  <span class="menu-arrow"></span>
+                </a>
+                <ul>
+                  <li>
+                    <a
+                      href="/add-prebooking"
+                      class="{{ 'active' if request.path == '/add-prebooking' else '' }}"
+                    >
+                      Add Pre-Booking
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      href="/prebooking-list"
+                      class="{{ 'active' if request.path == '/prebooking-list' else '' }}"
+                    >
+                      Pre-Booking List
+                    </a>
+                  </li>
+                </ul>
+              </li>
+
               <!-- ========================================= -->
               <!-- BRANCH MANAGER ONLY VIEW -->
               <!-- ========================================= -->

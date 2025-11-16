@@ -1,0 +1,258 @@
+{% extends 'base.html' %} {% block content %}
+<div class="page-wrapper">
+  <div class="content">
+    <div class="page-header">
+      <div class="page-title">
+        <h4>Create New Pre-Booking</h4>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        {% with messages = get_flashed_messages(with_categories=true) %} {% if
+        messages %} {% for category, message in messages %}
+        <div
+          class="alert alert-{{ 'danger' if category=='error' else 'success' }}"
+        >
+          {{ message }}
+        </div>
+        {% endfor %} {% endif %} {% endwith %}
+
+        <form method="POST" action="/add-prebooking">
+          <div class="row">
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Customer Name <span class="text-danger">*</span></label>
+                <input
+                  type="text"
+                  class="form-control"
+                  name="username"
+                  required
+                />
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Mobile Number <span class="text-danger">*</span></label>
+                <input
+                  type="tel"
+                  class="form-control"
+                  name="mobile_number"
+                  pattern="[0-9]{10}"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Email Address</label>
+                <input type="email" class="form-control" name="email" />
+              </div>
+            </div>
+            {% if user.role in ['admin', 'store_manager'] %}
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Branch <span class="text-danger">*</span></label>
+                <select class="form-control" name="restaurant_id" required>
+                  <option value="">Select Branch</option>
+                  {% for r in restaurants %}
+                  <option value="{{ r.id }}">{{ r.restaurantname }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="row">
+            <div class="col-md-12">
+              <div class="form-group">
+                <label
+                  >Delivery Address <span class="text-danger">*</span></label
+                >
+                <textarea
+                  class="form-control"
+                  name="delivery_address"
+                  rows="3"
+                  required
+                ></textarea>
+              </div>
+            </div>
+          </div>
+
+          <hr />
+          <h5>Order Details</h5>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Select Product <span class="text-danger">*</span></label>
+                <select
+                  class="form-control"
+                  id="product_id"
+                  name="product_id"
+                  required
+                >
+                  <option value="">-- Select Product --</option>
+                  {% for product in products %}
+                  <option
+                    value="{{ product.id }}"
+                    data-price="{{ product.price }}"
+                  >
+                    {{ product.product_name }} - ₹{{ product.price }}
+                  </option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="form-group">
+                <label>Quantity <span class="text-danger">*</span></label>
+                <input
+                  type="number"
+                  class="form-control"
+                  id="quantity"
+                  name="quantity"
+                  value="1"
+                  min="1"
+                  required
+                />
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="form-group">
+                <label>Unit Price</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="unit_price"
+                  readonly
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-4">
+              <div class="form-group">
+                <label>Total Amount</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="total_amount"
+                  readonly
+                />
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="form-group">
+                <label>Amount Paid</label>
+                <input
+                  type="number"
+                  class="form-control"
+                  id="amount_paid"
+                  name="amount_paid"
+                  value="0"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="form-group">
+                <label>Pending Balance</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="pending_balance"
+                  readonly
+                />
+              </div>
+            </div>
+          </div>
+
+          <hr />
+          <h5>Delivery Schedule</h5>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Delivery Date <span class="text-danger">*</span></label>
+                <input
+                  type="date"
+                  class="form-control"
+                  name="delivery_date"
+                  min="{{ today }}"
+                  required
+                />
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Delivery Time <span class="text-danger">*</span></label>
+                <input
+                  type="time"
+                  class="form-control"
+                  name="delivery_time"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-12">
+              <div class="form-group">
+                <label>Additional Notes</label>
+                <textarea class="form-control" name="notes" rows="3"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <button type="submit" class="btn btn-primary">
+              Create Pre-Booking
+            </button>
+            <a href="{{ url_for('prebooking_list') }}" class="btn btn-secondary"
+              >Cancel</a
+            >
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const productSelect = document.getElementById("product_id");
+  const quantityInput = document.getElementById("quantity");
+  const unitPriceInput = document.getElementById("unit_price");
+  const totalAmountInput = document.getElementById("total_amount");
+  const amountPaidInput = document.getElementById("amount_paid");
+  const pendingBalanceInput = document.getElementById("pending_balance");
+
+  function calculateTotals() {
+    const selectedOption = productSelect.options[productSelect.selectedIndex];
+    const price = parseFloat(selectedOption.getAttribute("data-price")) || 0;
+    const quantity = parseInt(quantityInput.value) || 0;
+    const amountPaid = parseFloat(amountPaidInput.value) || 0;
+
+    const total = price * quantity;
+    const pending = total - amountPaid;
+
+    unitPriceInput.value = price.toFixed(2);
+    totalAmountInput.value = total.toFixed(2);
+    pendingBalanceInput.value = pending.toFixed(2);
+  }
+
+  productSelect.addEventListener("change", calculateTotals);
+  quantityInput.addEventListener("input", calculateTotals);
+  amountPaidInput.addEventListener("input", calculateTotals);
+
+  // Initial calculation
+  calculateTotals();
+</script>
+{% endblock %}

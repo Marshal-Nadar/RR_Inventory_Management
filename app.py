@@ -11,6 +11,8 @@ from werkzeug.utils import secure_filename
 from math import ceil
 import os
 import pytz
+import random
+import string
 from dotenv import load_dotenv
 load_dotenv()
 # Get the current working directory
@@ -4454,6 +4456,402 @@ def delete_nbs_report(report_id):
         flash(f'Error: {str(e)}', 'error')
     
     return redirect(url_for('nbs_reports'))
+
+def generate_order_number():
+    prefix = "PB"
+    timestamp = datetime.now().strftime("%Y%m%d")
+    random_suffix = ''.join(random.choices(string.digits, k=4))
+    return f"{prefix}{timestamp}{random_suffix}"
+
+# ==================== ADD PRE-BOOKING ====================
+@app.route('/add-prebooking', methods=['GET', 'POST'])
+def add_prebooking():
+    if "user" not in session:
+        return redirect("/login")
+    
+    user = session["user"]
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # Fetch active products
+    cursor.execute("SELECT id, product_name, price FROM prebooking_products WHERE status='active' ORDER BY product_name")
+    products = cursor.fetchall()
+    
+    # Fetch restaurants for admin/store_manager
+    restaurants = []
+    if user['role'] in ['admin', 'store_manager']:
+        cursor.execute("SELECT id, restaurantname FROM restaurant WHERE status='active' ORDER BY restaurantname")
+        restaurants = cursor.fetchall()
+    
+    if request.method == 'POST':
+        try:
+            # Get form data
+            username = request.form['username']
+            mobile = request.form['mobile_number']
+            email = request.form.get('email', '')
+            address = request.form['delivery_address']
+            product_id = int(request.form['product_id'])
+            quantity = int(request.form['quantity'])
+            delivery_date = request.form['delivery_date']
+            delivery_time = request.form['delivery_time']
+            amount_paid = float(request.form.get('amount_paid', 0))
+            notes = request.form.get('notes', '')
+            
+            # Get restaurant_id
+            restaurant_id = None
+            if user['role'] in ['admin', 'store_manager']:
+                restaurant_id = request.form.get('restaurant_id')
+            elif user['role'] == 'branch_manager':
+                # Map branch manager email to restaurant
+                email_to_restaurant = {
+                    "bmktcnagar@gmail.com": 1,
+                    "bmnewbs@gmail.com": 2,
+                    "dharanistorekeeper@gmail.com": 4
+                }
+                restaurant_id = email_to_restaurant.get(user.get('email'))
+            
+            # Get product price
+            cursor.execute("SELECT price FROM prebooking_products WHERE id=%s", (product_id,))
+            product = cursor.fetchone()
+            
+            if not product:
+                flash("Invalid product selected!", "error")
+                return redirect(url_for('add_prebooking'))
+            
+            unit_price = float(product['price'])
+            total_amount = unit_price * quantity
+            pending_balance = total_amount - amount_paid
+            
+            # Determine payment status
+            if amount_paid == 0:
+                payment_status = 'pending'
+            elif amount_paid >= total_amount:
+                payment_status = 'completed'
+                pending_balance = 0
+            else:
+                payment_status = 'partial'
+            
+            # Generate order number
+            order_number = generate_order_number()
+            
+            # Insert order
+            cursor.execute("""
+                INSERT INTO prebooking_orders (
+                    order_number, username, mobile_number, email, delivery_address,
+                    product_id, quantity, unit_price, total_amount, amount_paid,
+                    pending_balance, delivery_date, delivery_time, payment_status,
+                    restaurant_id, notes
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                order_number, username, mobile, email, address,
+                product_id, quantity, unit_price, total_amount, amount_paid,
+                pending_balance, delivery_date, delivery_time, payment_status,
+                restaurant_id, notes
+            ))
+            
+            order_id = cursor.lastrowid
+            
+            # Record payment if amount paid > 0
+            if amount_paid > 0:
+                cursor.execute("""
+                    INSERT INTO prebooking_payments (order_id, amount, payment_method, remarks)
+                    VALUES (%s, %s, 'cash', 'Initial payment')
+                """, (order_id, amount_paid))
+            
+            conn.commit()
+            flash(f"Pre-booking created successfully! Order Number: {order_number}", "success")
+            return redirect(url_for('prebooking_list'))
+            
+        except Exception as e:
+            conn.rollback()
+            flash(f"Error: {str(e)}", "error")
+        finally:
+            cursor.close()
+            conn.close()
+    
+    return render_template('add_prebooking.html', user=user, products=products, restaurants=restaurants, today=date.today())
+
+
+# ==================== PREBOOKING LIST ====================
+@app.route('/prebooking-list', methods=['GET'])
+def prebooking_list():
+    if "user" not in session:
+        return redirect("/login")
+    
+    user = session["user"]
+    role = user["role"]
+    email = user.get("email")
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # ---------- 1. BRANCH SELECTION (admin only) ----------
+    branch_id = request.args.get("branch_id")          # from dropdown
+    branches = []                                      # list of branches for admin
+    if role == 'admin':
+        cursor.execute("SELECT id, restaurantname FROM restaurant ORDER BY restaurantname")
+        branches = cursor.fetchall()
+        # default to first branch if none selected
+        if not branch_id and branches:
+            branch_id = str(branches[1]['id'])
+
+    # ---------- 2. Pagination ----------
+    per_page = 10
+    page = int(request.args.get("page", 1))
+    offset = (page - 1) * per_page
+    
+    # ---------- 3. Filters ----------
+    search = request.args.get("search", "")
+    status_filter = request.args.get("status", "")
+    payment_filter = request.args.get("payment", "")
+    start_date = request.args.get("start_date", "")
+    end_date = request.args.get("end_date", "")
+    
+    # ---------- 4. Base query ----------
+    base_query = """
+        FROM prebooking_orders po
+        LEFT JOIN prebooking_products pp ON po.product_id = pp.id
+        LEFT JOIN restaurant r ON po.restaurant_id = r.id
+        WHERE 1=1
+    """
+    params = []
+    
+    # Role + Branch filter
+    if role == 'branch_manager':
+        email_to_restaurant = {
+            "bmktcnagar@gmail.com": 1,
+            "bmnewbs@gmail.com": 2,
+            "dharanistorekeeper@gmail.com": 4
+        }
+        restaurant_id = email_to_restaurant.get(email)
+        if restaurant_id:
+            base_query += " AND po.restaurant_id = %s"
+            params.append(restaurant_id)
+    elif role == 'admin' and branch_id:
+        base_query += " AND po.restaurant_id = %s"
+        params.append(branch_id)
+
+    # Search, status, payment, date filters (same as before)
+    if search:
+        base_query += " AND (po.order_number LIKE %s OR po.username LIKE %s OR po.mobile_number LIKE %s)"
+        s = f"%{search}%"
+        params.extend([s, s, s])
+    if status_filter:
+        base_query += " AND po.order_status = %s"
+        params.append(status_filter)
+    if payment_filter:
+        base_query += " AND po.payment_status = %s"
+        params.append(payment_filter)
+    if start_date and end_date:
+        base_query += " AND po.delivery_date BETWEEN %s AND %s"
+        params.extend([start_date, end_date])
+    elif start_date:
+        base_query += " AND po.delivery_date >= %s"
+        params.append(start_date)
+    elif end_date:
+        base_query += " AND po.delivery_date <= %s"
+        params.append(end_date)
+
+    # ---------- 5. Summary totals (independent of pagination) ----------
+    summary_query = f"""
+        SELECT 
+            COALESCE(SUM(po.total_amount), 0)      AS total_prebooked,
+            COALESCE(SUM(po.amount_paid), 0)       AS total_paid,
+            COALESCE(SUM(po.pending_balance), 0)   AS total_pending
+        {base_query}
+    """
+    cursor.execute(summary_query, params)
+    summary = cursor.fetchone()
+
+    # ---------- 6. Total rows for pagination ----------
+    cursor.execute(f"SELECT COUNT(*) as total {base_query}", params)
+    total_records = cursor.fetchone()["total"]
+    total_pages = (total_records + per_page - 1) // per_page
+
+    # ---------- 7. Fetch paginated orders ----------
+    orders_query = f"""
+        SELECT po.*, pp.product_name, r.restaurantname
+        {base_query}
+        ORDER BY po.created_at DESC
+        LIMIT %s OFFSET %s
+    """
+    cursor.execute(orders_query, (*params, per_page, offset))
+    orders = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    # ---------- 8. Render ----------
+    return render_template(
+        'prebooking_list.html',
+        user=user,
+        orders=orders,
+        summary=summary,
+        branches=branches,
+        selected_branch=branch_id,
+        page=page,
+        total_pages=total_pages,
+        search=search,
+        status_filter=status_filter,
+        payment_filter=payment_filter,
+        start_date=start_date,
+        end_date=end_date,
+        datetime=datetime
+    )
+
+
+# ==================== VIEW PREBOOKING ====================
+@app.route('/view-prebooking/<int:order_id>')
+def view_prebooking(order_id):
+    if "user" not in session:
+        return redirect("/login")
+    
+    user = session["user"]
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # Fetch order details
+    cursor.execute("""
+        SELECT po.*, pp.product_name, r.restaurantname
+        FROM prebooking_orders po
+        LEFT JOIN prebooking_products pp ON po.product_id = pp.id
+        LEFT JOIN restaurant r ON po.restaurant_id = r.id
+        WHERE po.id = %s
+    """, (order_id,))
+    order = cursor.fetchone()
+    
+    if not order:
+        flash("Order not found!", "error")
+        return redirect(url_for('prebooking_list'))
+    
+    # Fetch payment history
+    cursor.execute("""
+        SELECT * FROM prebooking_payments
+        WHERE order_id = %s
+        ORDER BY payment_date DESC
+    """, (order_id,))
+    payments = cursor.fetchall()
+    
+    cursor.close()
+    conn.close()
+    
+    return render_template(
+        'view_prebooking.html',
+        user=user,
+        order=order,
+        payments=payments,
+        datetime=datetime   # ADD THIS LINE
+    )
+
+
+# ==================== ADD PAYMENT ====================
+@app.route('/add-payment/<int:order_id>', methods=['POST'])
+def add_payment(order_id):
+    if "user" not in session:
+        return redirect("/login")
+    
+    try:
+        amount = float(request.form['amount'])
+        payment_method = request.form.get('payment_method', 'cash')
+        remarks = request.form.get('remarks', '')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Get current order
+        cursor.execute("SELECT * FROM prebooking_orders WHERE id=%s", (order_id,))
+        order = cursor.fetchone()
+        
+        if not order:
+            flash("Order not found!", "error")
+            return redirect(url_for('prebooking_list'))
+        
+        # Calculate new pending balance
+        new_amount_paid = float(order['amount_paid']) + amount
+        new_pending = float(order['total_amount']) - new_amount_paid
+        
+        # Determine payment status
+        if new_pending <= 0:
+            payment_status = 'completed'
+            new_pending = 0
+        elif new_amount_paid > 0:
+            payment_status = 'partial'
+        else:
+            payment_status = 'pending'
+        
+        # Update order
+        cursor.execute("""
+            UPDATE prebooking_orders
+            SET amount_paid = %s, pending_balance = %s, payment_status = %s
+            WHERE id = %s
+        """, (new_amount_paid, new_pending, payment_status, order_id))
+        
+        # Record payment
+        cursor.execute("""
+            INSERT INTO prebooking_payments (order_id, amount, payment_method, remarks)
+            VALUES (%s, %s, %s, %s)
+        """, (order_id, amount, payment_method, remarks))
+        
+        conn.commit()
+        flash("Payment added successfully!", "success")
+        
+    except Exception as e:
+        conn.rollback()
+        flash(f"Error: {str(e)}", "error")
+    finally:
+        cursor.close()
+        conn.close()
+    
+    return redirect(url_for('view_prebooking', order_id=order_id))
+
+
+# ==================== UPDATE ORDER STATUS ====================
+@app.route('/update-order-status/<int:order_id>', methods=['POST'])
+def update_order_status(order_id):
+    if "user" not in session or session["user"]["role"] not in ['admin', 'store_manager', 'branch_manager']:
+        return redirect("/login")
+    
+    try:
+        new_status = request.form['order_status']
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE prebooking_orders
+            SET order_status = %s
+            WHERE id = %s
+        """, (new_status, order_id))
+        
+        conn.commit()
+        flash("Order status updated successfully!", "success")
+        
+    except Exception as e:
+        conn.rollback()
+        flash(f"Error: {str(e)}", "error")
+    finally:
+        cursor.close()
+        conn.close()
+    
+    return redirect(url_for('view_prebooking', order_id=order_id))
+
+
+# ==================== GET PRODUCT PRICE (AJAX) ====================
+@app.route('/get-product-price/<int:product_id>')
+def get_product_price(product_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    cursor.execute("SELECT price FROM prebooking_products WHERE id=%s", (product_id,))
+    product = cursor.fetchone()
+    
+    cursor.close()
+    conn.close()
+    
+    if product:
+        return jsonify({'price': float(product['price'])})
+    return jsonify({'price': 0})
 
 if __name__ == "__main__":
     app.run()
