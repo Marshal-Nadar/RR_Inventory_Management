@@ -4106,8 +4106,8 @@ def add_nbs_report():
 
             # Derived fields
             total_income = petpooja_total + ns_total + outdoor_catering
-            net_sales = total_income + (swiggy + zomato)
-            net_counter = upi + cash + r_expense
+            net_sales = total_income
+            net_counter = upi + cash + r_expense + swiggy + zomato
             difference = net_counter - net_sales
 
             conn = get_db_connection()
@@ -4125,12 +4125,12 @@ def add_nbs_report():
                     UPDATE nbs_daily_reports SET
                     petpooja_total=%s, ns_total=%s, outdoor_catering=%s,
                     total_income=%s, upi=%s, cash=%s, r_expense=%s,
-                    swiggy=%s, zomato=%s, net_counter=%s, difference=%s,
+                    swiggy=%s, zomato=%s, net_counter=%s, net_sales=%s, difference=%s,
                     updated_at=CURRENT_TIMESTAMP
                     WHERE report_date=%s AND restaurant_id=%s
                 """, (
                     petpooja_total, ns_total, outdoor_catering, total_income,
-                    upi, cash, r_expense, swiggy, zomato, net_counter,
+                    upi, cash, r_expense, swiggy, zomato, net_counter, net_sales,
                     difference, report_date, restaurant_id
                 ))
                 message = "Report updated successfully!"
@@ -4202,10 +4202,10 @@ def edit_nbs_report(report_id):
             swiggy = float(request.form['swiggy'] or 0)
             zomato = float(request.form['zomato'] or 0)
 
-            # Derived fields (✅ Fixed logic)
+            # NEW CALCULATION (matching view_nbs_report logic)
             total_income = petpooja_total + ns_total + outdoor_catering
-            net_sales = total_income + (swiggy + zomato)
-            net_counter = upi + cash + r_expense
+            net_sales = total_income  # Removed swiggy + zomato
+            net_counter = upi + cash + r_expense + swiggy + zomato  # Added swiggy + zomato
             difference = net_counter - net_sales
 
             cursor.execute("""
@@ -4249,12 +4249,24 @@ def edit_nbs_report(report_id):
         restaurant_name = next((r['restaurantname'] for r in restaurants if r['id'] == report['restaurant_id']), None)
         report['restaurant_name'] = restaurant_name
 
-        # ✅ Recalculate with correct logic
-        swiggy = report.get('swiggy', 0) or 0
-        zomato = report.get('zomato', 0) or 0
-        total_income = report.get('total_income', 0) or 0
-        report['net_sales'] = total_income + (swiggy + zomato)
-        report['difference'] = (report.get('net_counter', 0) or 0) - report['net_sales']
+        # NEW CALCULATION (matching view_nbs_report logic)
+        petpooja = float(report.get('petpooja_total', 0) or 0)
+        ns = float(report.get('ns_total', 0) or 0)
+        outdoor = float(report.get('outdoor_catering', 0) or 0)
+        swiggy = float(report.get('swiggy', 0) or 0)
+        zomato = float(report.get('zomato', 0) or 0)
+        upi = float(report.get('upi', 0) or 0)
+        cash = float(report.get('cash', 0) or 0)
+        r_expense = float(report.get('r_expense', 0) or 0)
+
+        total_income = petpooja + ns + outdoor
+        net_sales = total_income  # Removed swiggy + zomato
+        net_counter = upi + cash + r_expense + swiggy + zomato  # Added swiggy + zomato
+        difference = net_counter - net_sales
+
+        report['net_sales'] = net_sales
+        report['net_counter'] = net_counter
+        report['difference'] = difference
 
     cursor.close()
     conn.close()
@@ -4358,9 +4370,10 @@ def nbs_reports():
         cash = float(report.get('cash') or 0)
         r_expense = float(report.get('r_expense') or 0)
         
+        # NEW CALCULATION
         total_income = pet + ns + outdoor
-        net_sales = total_income + (swiggy + zomato)
-        net_counter = upi + cash + r_expense
+        net_sales = total_income
+        net_counter = upi + cash + r_expense + swiggy + zomato
         difference = net_counter - net_sales
 
         report['total_income'] = total_income
@@ -4421,14 +4434,27 @@ def view_nbs_report(report_id):
             branch = cursor.fetchone()
             report['cashier_name'] = branch['restaurantname'] if branch else ''
 
-        swiggy = report.get('swiggy', 0) or 0
-        zomato = report.get('zomato', 0) or 0
-        total_income = report.get('total_income', 0) or 0
-        net_counter = report.get('net_counter', 0) or 0
+        # Get all required fields
+        petpooja = float(report.get('petpooja_total', 0) or 0)
+        ns = float(report.get('ns_total', 0) or 0)
+        outdoor = float(report.get('outdoor_catering', 0) or 0)
+        swiggy = float(report.get('swiggy', 0) or 0)
+        zomato = float(report.get('zomato', 0) or 0)
+        upi = float(report.get('upi', 0) or 0)
+        cash = float(report.get('cash', 0) or 0)
+        r_expense = float(report.get('r_expense', 0) or 0)
 
-        # Compute fields needed in template
-        report['net_petpooja'] = total_income + (swiggy + zomato)   # Net Sales
-        report['difference'] = net_counter - report['net_petpooja']
+        # NEW CALCULATION
+        total_income = petpooja + ns + outdoor
+        net_sales = total_income  # Removed swiggy + zomato
+        net_counter = upi + cash + r_expense + swiggy + zomato  # Added swiggy + zomato
+        difference = net_counter - net_sales
+
+        # Update report with calculated values
+        report['total_income'] = total_income
+        report['net_petpooja'] = net_sales
+        report['net_counter'] = net_counter
+        report['difference'] = difference
 
     cursor.close()
     conn.close()

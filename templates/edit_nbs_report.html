@@ -111,12 +111,12 @@
           <h5>Live Calculation Summary</h5>
           <div class="row">
             <div class="col-md-4">
-              <label>Net Counter</label>
-              <input type="text" class="form-control" id="net_counter" value="{{ report.net_counter }}" readonly>
+              <label>Net Sales (Income Only)</label>
+              <input type="text" class="form-control" id="net_sales" value="{{ report.net_sales }}" readonly>
             </div>
             <div class="col-md-4">
-              <label>Net Sales</label>
-              <input type="text" class="form-control" id="net_sales" value="{{ report.net_sales }}" readonly>
+              <label>Net Counter (UPI+Cash+Misc+SW+ZO)</label>
+              <input type="text" class="form-control" id="net_counter" value="{{ report.net_counter }}" readonly>
             </div>
             <div class="col-md-4">
               <label>Difference</label>
@@ -142,32 +142,45 @@
   }
 
   function calculateLive() {
+    // Income section
     const petpooja = parseNum('petpooja_total');
     const ns_total = parseNum('ns_total');
     const outdoor = parseNum('outdoor_catering');
     const total_income = petpooja + ns_total + outdoor;
 
+    // Online platforms
     const swiggy = parseNum('swiggy');
     const zomato = parseNum('zomato');
-    const net_sales = total_income + (swiggy + zomato); // ✅ FIXED (was minus before)
 
+    // NEW CALCULATION: Net Sales = total_income only (no swiggy/zomato)
+    const net_sales = total_income;
+
+    // Payment methods
     const upi = parseNum('upi');
     const cash = parseNum('cash');
     const r_expense = parseNum('r_expense');
-    const net_counter = upi + cash + r_expense;
 
-    const difference = net_counter - net_sales; // ✅ FIXED (was wrong earlier)
+    // NEW CALCULATION: Net Counter = upi + cash + misc + swiggy + zomato
+    const net_counter = upi + cash + r_expense + swiggy + zomato;
 
-    document.getElementById('net_counter').value = net_counter.toFixed(2);
+    // Difference
+    const difference = net_counter - net_sales;
+
+    // Update UI
     document.getElementById('net_sales').value = net_sales.toFixed(2);
+    document.getElementById('net_counter').value = net_counter.toFixed(2);
 
     const diffEl = document.getElementById('difference');
     diffEl.value = difference.toFixed(2);
     diffEl.classList.remove('text-success', 'text-danger');
-    if (difference < 0) diffEl.classList.add('text-danger');
-    else diffEl.classList.add('text-success');
+    if (difference < 0) {
+      diffEl.classList.add('text-danger');
+    } else {
+      diffEl.classList.add('text-success');
+    }
   }
 
+  // Wire all inputs
   document.querySelectorAll('.calc-input').forEach(el => {
     el.addEventListener('input', calculateLive);
   });
