@@ -1,0 +1,380 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-wrapper">
+  <div class="content">
+    <div class="page-header">
+      <div class="page-title">
+        <h4>Edit Pre-Booking - {{ order.order_number }}</h4>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category=='error' else 'success' }}">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('edit_prebooking', order_id=order.id) }}" id="prebookingForm">
+          <div class="row">
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Customer Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" name="username" value="{{ order.username }}" required>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Mobile Number <span class="text-danger">*</span></label>
+                <input type="tel" class="form-control" name="mobile_number" value="{{ order.mobile_number }}" pattern="[0-9]{10}" required>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Email Address</label>
+                <input type="email" class="form-control" name="email" value="{{ order.email or '' }}">
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Branch <span class="text-danger">*</span></label>
+                <select class="form-control" name="restaurant_id" required>
+                  {% for r in restaurants %}
+                  <option value="{{ r.id }}" {% if r.id == order.restaurant_id %}selected{% endif %}>{{ r.restaurantname }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-12">
+              <div class="form-group">
+                <label>Delivery Address <span class="text-danger">*</span></label>
+                <textarea class="form-control" name="delivery_address" rows="3" required>{{ order.delivery_address }}</textarea>
+              </div>
+            </div>
+          </div>
+
+          <hr />
+          <h5>Order Details</h5>
+
+          <!-- Product Selection Section -->
+          <div class="row mb-3">
+            <div class="col-md-8">
+              <div class="form-group">
+                <label>Select Product</label>
+                <select class="form-control" id="product_select">
+                  <option value="">-- Select Product --</option>
+                  {% for product in products %}
+                  <option value="{{ product.id }}" data-name="{{ product.product_name }}" data-price="{{ product.price }}">
+                    {{ product.product_name }} - ₹{{ product.price }}
+                  </option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            <div class="col-md-2">
+              <div class="form-group">
+                <label>Quantity</label>
+                <input type="number" class="form-control" id="product_quantity" value="1" min="1">
+              </div>
+            </div>
+            <div class="col-md-2">
+              <div class="form-group">
+                <label>&nbsp;</label>
+                <button type="button" class="btn btn-primary w-100" onclick="addProductRow()">
+                  <i class="fas fa-plus"></i> Add
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Products Table -->
+          <div class="table-responsive">
+            <table class="table table-bordered" id="productsTable">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Unit Price</th>
+                  <th>Quantity</th>
+                  <th>Product Discount</th>
+                  <th>Item Total</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="productsTableBody">
+                <!-- Product rows will be added here dynamically -->
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3" class="text-end"><strong>Subtotal:</strong></td>
+                  <td colspan="3" id="subtotal">₹0.00</td>
+                </tr>
+                <tr>
+                  <td colspan="3" class="text-end"><strong>Product Discounts Total:</strong></td>
+                  <td colspan="3" id="product_discount_total">₹0.00</td>
+                </tr>
+                <tr>
+                  <td colspan="3" class="text-end"><strong>Total Amount:</strong></td>
+                  <td colspan="3" id="total_amount">₹0.00</td>
+                </tr>
+                <tr>
+                  <td colspan="3" class="text-end"><strong>Overall Discount:</strong></td>
+                  <td>
+                    <input type="number" class="form-control" id="overall_discount" name="overall_discount" value="{{ order.overall_discount or 0 }}" min="0" step="0.01">
+                  </td>
+                  <td colspan="2" id="overall_discount_display">₹0.00</td>
+                </tr>
+                <tr class="table-success">
+                  <td colspan="3" class="text-end"><strong>Final Amount:</strong></td>
+                  <td colspan="3" id="final_amount">₹0.00</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <!-- Payment Section -->
+          <div class="col-md-4">
+  <div class="form-group">
+    <label>Amount Paid</label>
+    <input type="number" class="form-control" id="amount_paid" name="amount_paid" 
+           value="{{ order.amount_paid }}" min="0" step="0.01">
+  </div>
+</div>
+<div class="col-md-4">
+  <div class="form-group">
+    <label>Payment Method</label>
+    <select class="form-control" name="payment_method">
+      <option value="cash">Cash</option>
+      <option value="upi">UPI</option>
+      <option value="card">Card</option>
+      <option value="online">Online</option>
+    </select>
+  </div>
+</div>
+<div class="col-md-4">
+  <div class="form-group">
+    <label>Remarks</label>
+    <input type="text" class="form-control" name="payment_remarks" placeholder="e.g. Additional payment via UPI">
+  </div>
+</div>
+
+          <hr />
+          <h5>Delivery Schedule</h5>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Delivery Date <span class="text-danger">*</span></label>
+                <input type="date" class="form-control" name="delivery_date" value="{{ order.delivery_date.isoformat() }}" min="{{ today }}" required>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-group">
+                <label>Delivery Time <span class="text-danger">*</span></label>
+                <input type="time" class="form-control" name="delivery_time"
+                       value="{{ (datetime.min + order.delivery_time).time().strftime('%H:%M') }}" required>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-12">
+              <div class="form-group">
+                <label>Additional Notes</label>
+                <textarea class="form-control" name="notes" rows="3">{{ order.notes or '' }}</textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <button type="submit" class="btn btn-success">Update Pre-Booking</button>
+            <a href="{{ url_for('prebooking_list') }}" class="btn btn-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .product-row {
+    transition: background-color 0.3s;
+  }
+  .product-row:hover {
+    background-color: #f8f9fa;
+  }
+  .remove-product {
+    color: #dc3545;
+    cursor: pointer;
+  }
+  .remove-product:hover {
+    color: #bd2130;
+  }
+</style>
+
+<script>
+  let productRows = [];
+
+  // Initialize with existing order items
+  {% for item in order_items %}
+  productRows.push({
+    productId: "{{ item.product_id }}",
+    productName: "{{ item.product_name }}",
+    unitPrice: {{ item.unit_price }},
+    quantity: {{ item.quantity }},
+    productDiscount: {{ item.product_discount }}
+  });
+  {% endfor %}
+
+  function addProductRow() {
+    const productSelect = document.getElementById('product_select');
+    const quantityInput = document.getElementById('product_quantity');
+    
+    const productId = productSelect.value;
+    const productName = productSelect.options[productSelect.selectedIndex].getAttribute('data-name');
+    const unitPrice = parseFloat(productSelect.options[productSelect.selectedIndex].getAttribute('data-price'));
+    const quantity = parseInt(quantityInput.value) || 1;
+    
+    if (!productId) {
+      alert('Please select a product');
+      return;
+    }
+    
+    if (quantity < 1) {
+      alert('Please enter a valid quantity');
+      return;
+    }
+    
+    // Check if product already exists
+    const existingIndex = productRows.findIndex(row => row.productId === productId);
+    if (existingIndex > -1) {
+      productRows[existingIndex].quantity += quantity;
+      renderProductRows();
+      return;
+    }
+    
+    // Add new product
+    const productRow = {
+      productId: productId,
+      productName: productName,
+      unitPrice: unitPrice,
+      quantity: quantity,
+      productDiscount: 0
+    };
+    
+    productRows.push(productRow);
+    renderProductRows();
+    
+    // Reset inputs
+    productSelect.value = '';
+    quantityInput.value = '1';
+  }
+
+  function removeProductRow(index) {
+    productRows.splice(index, 1);
+    renderProductRows();
+  }
+
+  function updateProductQuantity(index, change) {
+    productRows[index].quantity += change;
+    if (productRows[index].quantity < 1) {
+      productRows[index].quantity = 1;
+    }
+    renderProductRows();
+  }
+
+  function updateProductDiscount(index, discount) {
+    productRows[index].productDiscount = parseFloat(discount) || 0;
+    renderProductRows();
+  }
+
+  function renderProductRows() {
+    const tbody = document.getElementById('productsTableBody');
+    let html = '';
+    
+    productRows.forEach((row, index) => {
+      const itemSubtotal = row.unitPrice * row.quantity;
+      const itemTotal = itemSubtotal - row.productDiscount;
+      
+      html += `
+        <tr class="product-row">
+          <td>
+            ${row.productName}
+            <input type="hidden" name="product_id[]" value="${row.productId}">
+          </td>
+          <td>₹${row.unitPrice.toFixed(2)}</td>
+          <td>
+            <div class="input-group input-group-sm">
+              <button type="button" class="btn btn-outline-secondary" onclick="updateProductQuantity(${index}, -1)">-</button>
+              <input type="number" class="form-control text-center" name="quantity[]" value="${row.quantity}" min="1" onchange="productRows[${index}].quantity = parseInt(this.value) || 1; renderProductRows();">
+              <button type="button" class="btn btn-outline-secondary" onclick="updateProductQuantity(${index}, 1)">+</button>
+            </div>
+          </td>
+          <td>
+            <input type="number" class="form-control form-control-sm" name="product_discount[]" value="${row.productDiscount.toFixed(2)}" min="0" step="0.01" onchange="updateProductDiscount(${index}, this.value)">
+          </td>
+          <td>₹${itemTotal.toFixed(2)}</td>
+          <td>
+            <button type="button" class="btn btn-sm btn-danger remove-product" onclick="removeProductRow(${index})">
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+    
+    tbody.innerHTML = html || '<tr><td colspan="6" class="text-center text-muted">No products added</td></tr>';
+    calculateTotals();
+  }
+
+  function calculateTotals() {
+    let subtotal = 0;
+    let productDiscountTotal = 0;
+    
+    productRows.forEach(row => {
+      const itemSubtotal = row.unitPrice * row.quantity;
+      subtotal += itemSubtotal;
+      productDiscountTotal += row.productDiscount;
+    });
+    
+    const totalAmount = subtotal - productDiscountTotal;
+    const overallDiscount = parseFloat(document.getElementById('overall_discount').value) || 0;
+    const finalAmount = Math.max(0, totalAmount - overallDiscount);
+    const amountPaid = parseFloat(document.getElementById('amount_paid').value) || 0;
+    const pendingBalance = Math.max(0, finalAmount - amountPaid);
+    
+    // Update displays
+    document.getElementById('subtotal').textContent = `₹${subtotal.toFixed(2)}`;
+    document.getElementById('product_discount_total').textContent = `₹${productDiscountTotal.toFixed(2)}`;
+    document.getElementById('total_amount').textContent = `₹${totalAmount.toFixed(2)}`;
+    document.getElementById('overall_discount_display').textContent = `₹${overallDiscount.toFixed(2)}`;
+    document.getElementById('final_amount').textContent = `₹${finalAmount.toFixed(2)}`;
+    document.getElementById('pending_balance').value = `₹${pendingBalance.toFixed(2)}`;
+  }
+
+  // Event listeners
+  document.getElementById('overall_discount').addEventListener('input', calculateTotals);
+  document.getElementById('amount_paid').addEventListener('input', calculateTotals);
+
+  // Form validation
+  document.getElementById('prebookingForm').addEventListener('submit', function(e) {
+    if (productRows.length === 0) {
+      e.preventDefault();
+      alert('Please add at least one product to the order');
+      return false;
+    }
+  });
+
+  // Initial render
+  renderProductRows();
+  calculateTotals();
+</script>
+{% endblock %}

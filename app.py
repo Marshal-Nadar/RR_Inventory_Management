@@ -3127,6 +3127,104 @@ def list_rawmaterial_transfers():
         return render_template('list_rawmaterial_transfers.html', transfers=transfers, current_date=selected_date, user=session["user"])
     return render_template('list_rawmaterial_transfers.html', user=session["user"])
 
+@app.route('/list_rawmaterial_transfers_range', methods=["GET", "POST"])
+def list_rawmaterial_transfers_range():
+    if "user" not in session:
+        return redirect("/login")
+
+    contact_details = get_contact_details()
+    kitchens = fetch_all("SELECT id, kitchenname FROM kitchen;", ()) or []
+    restaurants = fetch_all("SELECT id, restaurantname FROM restaurant;", ()) or []
+
+    range_transfers = []
+    grand_total_qty = 0
+    grand_total_cost = 0
+    grand_total_avg = 0
+
+    if request.method == "POST":
+        from_date = request.form.get('from_date')
+        to_date = request.form.get('to_date')
+        destination_type = request.form.get('destination_type')
+        destination_name = request.form.get('destination_name')
+
+        if from_date and to_date and destination_type and destination_name:
+            range_transfers = get_rawmaterial_transfer_history_range(
+                from_date, to_date, destination_type, destination_name
+            )
+
+            # Calculate grand totals
+            grand_total_qty = sum(t['quantity'] for t in range_transfers if t['quantity'])
+            grand_total_cost = sum(t['total_cost'] for t in range_transfers if t['total_cost'])
+            # average of transfer_avg (not sum)
+            transfer_avgs = [t['transfer_avg'] for t in range_transfers if t['transfer_avg']]
+            grand_total_avg = sum(transfer_avgs) / len(transfer_avgs) if transfer_avgs else 0
+
+        return render_template(
+            'list_rawmaterial_transfers_range.html',
+            range_transfers=range_transfers,
+            kitchens=kitchens,
+            restaurants=restaurants,
+            user=session["user"],
+            from_date=from_date,
+            to_date=to_date,
+            destination_type=destination_type,
+            destination_name=destination_name,
+            grand_total_qty=grand_total_qty,
+            grand_total_cost=grand_total_cost,
+            grand_total_avg=grand_total_avg,
+            contact_details=contact_details,
+        )
+
+    # For GET load
+    return render_template(
+        'list_rawmaterial_transfers_range.html',
+        range_transfers=[],
+        kitchens=kitchens,
+        restaurants=restaurants,
+        user=session["user"],
+        from_date=None,
+        to_date=None,
+        destination_type=None,
+        destination_name=None,
+        grand_total_qty=0,
+        grand_total_cost=0,
+        grand_total_avg=0,
+        contact_details=contact_details,
+    )
+
+
+def get_rawmaterial_transfer_history_range(from_date, to_date, destination_type, destination_name):
+    query = """
+    SELECT
+        rm.name AS raw_material_name,
+        rmt.quantity,
+        rmt.metric,
+        sr.storageroomname AS transferred_from,
+        rmt.destination_type,
+        CASE
+            WHEN rmt.destination_type = 'kitchen' THEN k.kitchenname
+            WHEN rmt.destination_type = 'restaurant' THEN r.restaurantname
+            ELSE 'Unknown'
+        END AS transferred_to,
+        rmt.transferred_date,
+        rmt.total_cost,
+        rmt.transfer_avg
+    FROM
+        raw_material_transfer_details rmt
+    JOIN
+        raw_materials rm ON rmt.raw_material_id = rm.id
+    JOIN
+        storagerooms sr ON rmt.source_storage_room_id = sr.id
+    LEFT JOIN
+        kitchen k ON rmt.destination_type = 'kitchen' AND rmt.destination_id = k.id
+    LEFT JOIN
+        restaurant r ON rmt.destination_type = 'restaurant' AND rmt.destination_id = r.id
+    WHERE
+        DATE(rmt.transferred_date) BETWEEN %s AND %s
+        AND rmt.destination_type = %s
+        AND rmt.destination_id = %s;
+    """
+    return fetch_all(query, (from_date, to_date, destination_type, destination_name))
 
 @app.route('/list_prepared_dishes_transfers', methods=["GET", "POST"])
 def list_prepared_dishes_transfers():
@@ -4040,6 +4138,42 @@ def fetch_misc_expense():
 
     return jsonify({"total_misc": float(result['total_misc'] or 0)})
 
+@app.route('/fetch-prebooking-paid-today', methods=['GET'])
+def fetch_prebooking_paid_today():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    restaurant_id = request.args.get("restaurant_id")
+    report_date = request.args.get("report_date")  # YYYY-MM-DD
+
+    if not restaurant_id or not report_date:
+        return jsonify({"total_prebooking_paid": 0})
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # CORRECT QUERY: Sum from prebooking_payments table (not prebooking_orders)
+        cursor.execute("""
+            SELECT COALESCE(SUM(amount), 0) AS total_prebooking_paid
+            FROM prebooking_payments pp
+            INNER JOIN prebooking_orders po ON pp.order_id = po.id
+            WHERE po.restaurant_id = %s
+              AND DATE(pp.payment_date) = %s
+              AND po.is_deleted = 0
+        """, (restaurant_id, report_date))
+
+        result = cursor.fetchone()
+        total = float(result['total_prebooking_paid'])
+
+        cursor.close()
+        conn.close()
+        return jsonify({"total_prebooking_paid": total})
+
+    except Exception as e:
+        print("Error in fetch-prebooking-paid-today:", e)
+        return jsonify({"total_prebooking_paid": 0})
+
 @app.route('/add-nbs-report', methods=['GET', 'POST'])
 def add_nbs_report():
     if "user" not in session:
@@ -4106,8 +4240,8 @@ def add_nbs_report():
 
             # Derived fields
             total_income = petpooja_total + ns_total + outdoor_catering
-            net_sales = total_income + (swiggy + zomato)
-            net_counter = upi + cash + r_expense
+            net_sales = total_income
+            net_counter = upi + cash + r_expense + swiggy + zomato
             difference = net_counter - net_sales
 
             conn = get_db_connection()
@@ -4125,12 +4259,12 @@ def add_nbs_report():
                     UPDATE nbs_daily_reports SET
                     petpooja_total=%s, ns_total=%s, outdoor_catering=%s,
                     total_income=%s, upi=%s, cash=%s, r_expense=%s,
-                    swiggy=%s, zomato=%s, net_counter=%s, difference=%s,
+                    swiggy=%s, zomato=%s, net_counter=%s, net_sales=%s, difference=%s,
                     updated_at=CURRENT_TIMESTAMP
                     WHERE report_date=%s AND restaurant_id=%s
                 """, (
                     petpooja_total, ns_total, outdoor_catering, total_income,
-                    upi, cash, r_expense, swiggy, zomato, net_counter,
+                    upi, cash, r_expense, swiggy, zomato, net_counter, net_sales,
                     difference, report_date, restaurant_id
                 ))
                 message = "Report updated successfully!"
@@ -4202,10 +4336,10 @@ def edit_nbs_report(report_id):
             swiggy = float(request.form['swiggy'] or 0)
             zomato = float(request.form['zomato'] or 0)
 
-            # Derived fields (✅ Fixed logic)
+            # NEW CALCULATION (matching view_nbs_report logic)
             total_income = petpooja_total + ns_total + outdoor_catering
-            net_sales = total_income + (swiggy + zomato)
-            net_counter = upi + cash + r_expense
+            net_sales = total_income  # Removed swiggy + zomato
+            net_counter = upi + cash + r_expense + swiggy + zomato  # Added swiggy + zomato
             difference = net_counter - net_sales
 
             cursor.execute("""
@@ -4249,12 +4383,24 @@ def edit_nbs_report(report_id):
         restaurant_name = next((r['restaurantname'] for r in restaurants if r['id'] == report['restaurant_id']), None)
         report['restaurant_name'] = restaurant_name
 
-        # ✅ Recalculate with correct logic
-        swiggy = report.get('swiggy', 0) or 0
-        zomato = report.get('zomato', 0) or 0
-        total_income = report.get('total_income', 0) or 0
-        report['net_sales'] = total_income + (swiggy + zomato)
-        report['difference'] = (report.get('net_counter', 0) or 0) - report['net_sales']
+        # NEW CALCULATION (matching view_nbs_report logic)
+        petpooja = float(report.get('petpooja_total', 0) or 0)
+        ns = float(report.get('ns_total', 0) or 0)
+        outdoor = float(report.get('outdoor_catering', 0) or 0)
+        swiggy = float(report.get('swiggy', 0) or 0)
+        zomato = float(report.get('zomato', 0) or 0)
+        upi = float(report.get('upi', 0) or 0)
+        cash = float(report.get('cash', 0) or 0)
+        r_expense = float(report.get('r_expense', 0) or 0)
+
+        total_income = petpooja + ns + outdoor
+        net_sales = total_income  # Removed swiggy + zomato
+        net_counter = upi + cash + r_expense + swiggy + zomato  # Added swiggy + zomato
+        difference = net_counter - net_sales
+
+        report['net_sales'] = net_sales
+        report['net_counter'] = net_counter
+        report['difference'] = difference
 
     cursor.close()
     conn.close()
@@ -4358,9 +4504,10 @@ def nbs_reports():
         cash = float(report.get('cash') or 0)
         r_expense = float(report.get('r_expense') or 0)
         
+        # NEW CALCULATION
         total_income = pet + ns + outdoor
-        net_sales = total_income + (swiggy + zomato)
-        net_counter = upi + cash + r_expense
+        net_sales = total_income
+        net_counter = upi + cash + r_expense + swiggy + zomato
         difference = net_counter - net_sales
 
         report['total_income'] = total_income
@@ -4414,28 +4561,40 @@ def view_nbs_report(report_id):
     cursor.execute("SELECT * FROM nbs_daily_reports WHERE id = %s", (report_id,))
     report = cursor.fetchone()
     
-    if report:
-        # Ensure cashier_name is fetched from branch if empty
-        if not report.get('cashier_name'):
-            cursor.execute("SELECT restaurantname FROM restaurant WHERE id=%s", (report['restaurant_id'],))
-            branch = cursor.fetchone()
-            report['cashier_name'] = branch['restaurantname'] if branch else ''
+    if not report:
+        cursor.close()
+        conn.close()
+        flash('Report not found!', 'error')
+        return redirect(url_for('nbs_reports'))
 
-        swiggy = report.get('swiggy', 0) or 0
-        zomato = report.get('zomato', 0) or 0
-        total_income = report.get('total_income', 0) or 0
-        net_counter = report.get('net_counter', 0) or 0
+    # Set cashier name from branch if empty
+    if not report.get('cashier_name'):
+        cursor.execute("SELECT restaurantname FROM restaurant WHERE id=%s", (report['restaurant_id'],))
+        branch = cursor.fetchone()
+        report['cashier_name'] = branch['restaurantname'] if branch else 'Unknown Branch'
 
-        # Compute fields needed in template
-        report['net_petpooja'] = total_income + (swiggy + zomato)   # Net Sales
-        report['difference'] = net_counter - report['net_petpooja']
+    # Recalculate live values
+    petpooja = float(report.get('petpooja_total') or 0)
+    ns = float(report.get('ns_total') or 0)
+    outdoor = float(report.get('outdoor_catering') or 0)
+    swiggy = float(report.get('swiggy') or 0)
+    zomato = float(report.get('zomato') or 0)
+    upi = float(report.get('upi') or 0)
+    cash = float(report.get('cash') or 0)
+    r_expense = float(report.get('r_expense') or 0)
+
+    total_income = petpooja + ns + outdoor
+    net_sales = total_income
+    net_counter = upi + cash + r_expense + swiggy + zomato
+    difference = net_counter - net_sales
+
+    report['total_income'] = total_income
+    report['net_petpooja'] = net_sales
+    report['net_counter'] = net_counter
+    report['difference'] = difference
 
     cursor.close()
     conn.close()
-    
-    if not report:
-        flash('Report not found!', 'error')
-        return redirect(url_for('nbs_reports'))
     
     return render_template('view_nbs_report.html', report=report, user=user)
 
@@ -4462,6 +4621,103 @@ def generate_order_number():
     timestamp = datetime.now().strftime("%Y%m%d")
     random_suffix = ''.join(random.choices(string.digits, k=4))
     return f"{prefix}{timestamp}{random_suffix}"
+
+# ==================== PREBOOKING PRODUCTS CRUD ====================
+
+@app.route('/prebooking-products')
+def prebooking_products_list():
+    if "user" not in session or session["user"]["role"] != "admin":
+        return redirect("/login")
+
+    user = session["user"]
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM prebooking_products ORDER BY product_name")
+    products = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return render_template('prebooking_products_list.html', user=user, products=products)
+
+
+@app.route('/prebooking-products/add', methods=['POST'])
+def add_prebooking_product():
+    if "user" not in session or session["user"]["role"] != "admin":
+        return jsonify({"success": False, "message": "Unauthorized"}), 403
+
+    name = request.form['product_name'].strip()
+    price = float(request.form['price'])
+    status = request.form.get('status', 'active')
+
+    if not name or price < 0:
+        return jsonify({"success": False, "message": "Invalid data"}), 400
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO prebooking_products (product_name, price, status)
+            VALUES (%s, %s, %s)
+        """, (name, price, status))
+        conn.commit()
+        return jsonify({"success": True, "message": "Product added successfully!"})
+    except mysql.connector.IntegrityError:
+        return jsonify({"success": False, "message": "Product name already exists!"})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "message": str(e)})
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/prebooking-products/update/<int:product_id>', methods=['POST'])
+def update_prebooking_product(product_id):
+    if "user" not in session or session["user"]["role"] != "admin":
+        return jsonify({"success": False, "message": "Unauthorized"}), 403
+
+    name = request.form['product_name'].strip()
+    price = float(request.form['price'])
+    status = request.form.get('status', 'active')
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE prebooking_products 
+            SET product_name = %s, price = %s, status = %s, updated_at = NOW()
+            WHERE id = %s
+        """, (name, price, status, product_id))
+        conn.commit()
+        return jsonify({"success": True, "message": "Product updated successfully!"})
+    except mysql.connector.IntegrityError:
+        return jsonify({"success": False, "message": "Product name already exists!"})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "message": str(e)})
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/prebooking-products/delete/<int:product_id>', methods=['POST'])
+def delete_prebooking_product(product_id):
+    if "user" not in session or session["user"]["role"] != "admin":
+        return jsonify({"success": False, "message": "Unauthorized"}), 403
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM prebooking_products WHERE id = %s", (product_id,))
+        conn.commit()
+        return jsonify({"success": True, "message": "Product deleted successfully!"})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "message": "Cannot delete: Product used in orders"})
+    finally:
+        cursor.close()
+        conn.close()
 
 # ==================== ADD PRE-BOOKING ====================
 @app.route('/add-prebooking', methods=['GET', 'POST'])
@@ -4491,12 +4747,20 @@ def add_prebooking():
             mobile = request.form['mobile_number']
             email = request.form.get('email', '')
             address = request.form['delivery_address']
-            product_id = int(request.form['product_id'])
-            quantity = int(request.form['quantity'])
             delivery_date = request.form['delivery_date']
             delivery_time = request.form['delivery_time']
             amount_paid = float(request.form.get('amount_paid', 0))
+            payment_method = request.form.get('payment_method', 'cash')  # New
+            payment_remarks = request.form.get('payment_remarks', 'Initial payment').strip() or 'Initial payment'
             notes = request.form.get('notes', '')
+            
+            # Get discount values
+            overall_discount = float(request.form.get('overall_discount', 0))
+            
+            # Get product items
+            product_ids = request.form.getlist('product_id[]')
+            quantities = request.form.getlist('quantity[]')
+            product_discounts = request.form.getlist('product_discount[]')
             
             # Get restaurant_id
             restaurant_id = None
@@ -4511,22 +4775,67 @@ def add_prebooking():
                 }
                 restaurant_id = email_to_restaurant.get(user.get('email'))
             
-            # Get product price
-            cursor.execute("SELECT price FROM prebooking_products WHERE id=%s", (product_id,))
-            product = cursor.fetchone()
-            
-            if not product:
-                flash("Invalid product selected!", "error")
+            # Validate products
+            if not product_ids or not any(product_ids):
+                flash("Please add at least one product!", "error")
                 return redirect(url_for('add_prebooking'))
             
-            unit_price = float(product['price'])
-            total_amount = unit_price * quantity
-            pending_balance = total_amount - amount_paid
+            # Calculate totals
+            subtotal = 0
+            product_discount_total = 0
+            items_data = []
+            
+            for i, (product_id, quantity, product_discount) in enumerate(zip(product_ids, quantities, product_discounts)):
+                if not product_id or not quantity or int(quantity) <= 0:
+                    continue
+                
+                # Get product details
+                cursor.execute("SELECT id, product_name, price FROM prebooking_products WHERE id=%s", (product_id,))
+                product = cursor.fetchone()
+                
+                if product:
+                    qty = int(quantity)
+                    unit_price = float(product['price'])
+                    item_discount = float(product_discount) if product_discount else 0
+                    item_subtotal = unit_price * qty
+                    item_final = item_subtotal - item_discount
+                    
+                    # Ensure amounts don't go negative
+                    if item_final < 0:
+                        item_final = 0
+                    
+                    subtotal += item_subtotal
+                    product_discount_total += item_discount
+                    
+                    items_data.append({
+                        'product_id': product_id,
+                        'product_name': product['product_name'],
+                        'unit_price': unit_price,
+                        'quantity': qty,
+                        'product_discount': item_discount,
+                        'item_total': item_final
+                    })
+            
+            if not items_data:
+                flash("No valid products added!", "error")
+                return redirect(url_for('add_prebooking'))
+            
+            # Calculate final amounts
+            total_amount = subtotal - product_discount_total
+            final_amount = total_amount - overall_discount
+            
+            # Ensure amounts don't go negative
+            if final_amount < 0:
+                final_amount = 0
+            if total_amount < 0:
+                total_amount = 0
+            
+            pending_balance = final_amount - amount_paid
             
             # Determine payment status
             if amount_paid == 0:
                 payment_status = 'pending'
-            elif amount_paid >= total_amount:
+            elif amount_paid >= final_amount:
                 payment_status = 'completed'
                 pending_balance = 0
             else:
@@ -4535,29 +4844,42 @@ def add_prebooking():
             # Generate order number
             order_number = generate_order_number()
             
-            # Insert order
+            # Insert main order
             cursor.execute("""
                 INSERT INTO prebooking_orders (
                     order_number, username, mobile_number, email, delivery_address,
-                    product_id, quantity, unit_price, total_amount, amount_paid,
-                    pending_balance, delivery_date, delivery_time, payment_status,
-                    restaurant_id, notes
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    subtotal, product_discount_total, overall_discount, total_amount,
+                    final_amount, amount_paid, pending_balance, delivery_date, 
+                    delivery_time, payment_status, restaurant_id, notes
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 order_number, username, mobile, email, address,
-                product_id, quantity, unit_price, total_amount, amount_paid,
-                pending_balance, delivery_date, delivery_time, payment_status,
-                restaurant_id, notes
+                subtotal, product_discount_total, overall_discount, total_amount,
+                final_amount, amount_paid, pending_balance, delivery_date, 
+                delivery_time, payment_status, restaurant_id, notes
             ))
             
             order_id = cursor.lastrowid
             
+            # Insert order items
+            for item in items_data:
+                cursor.execute("""
+                    INSERT INTO prebooking_order_items (
+                        prebooking_order_id, product_id, product_name, unit_price,
+                        quantity, product_discount, item_total
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    order_id, item['product_id'], item['product_name'],
+                    item['unit_price'], item['quantity'], item['product_discount'],
+                    item['item_total']
+                ))
+            
             # Record payment if amount paid > 0
             if amount_paid > 0:
                 cursor.execute("""
-                    INSERT INTO prebooking_payments (order_id, amount, payment_method, remarks)
-                    VALUES (%s, %s, 'cash', 'Initial payment')
-                """, (order_id, amount_paid))
+                    INSERT INTO prebooking_payments (order_id, amount, payment_method, remarks, payment_date)
+                    VALUES (%s, %s, %s, %s, NOW())
+                """, (order_id, amount_paid, payment_method, payment_remarks))
             
             conn.commit()
             flash(f"Pre-booking created successfully! Order Number: {order_number}", "success")
@@ -4587,14 +4909,11 @@ def prebooking_list():
     cursor = conn.cursor(dictionary=True)
     
     # ---------- 1. BRANCH SELECTION (admin only) ----------
-    branch_id = request.args.get("branch_id")          # from dropdown
-    branches = []                                      # list of branches for admin
+    branch_id = request.args.get("branch_id")
+    branches = []
     if role == 'admin':
         cursor.execute("SELECT id, restaurantname FROM restaurant ORDER BY restaurantname")
         branches = cursor.fetchall()
-        # default to first branch if none selected
-        if not branch_id and branches:
-            branch_id = str(branches[1]['id'])
 
     # ---------- 2. Pagination ----------
     per_page = 10
@@ -4607,13 +4926,18 @@ def prebooking_list():
     payment_filter = request.args.get("payment", "")
     start_date = request.args.get("start_date", "")
     end_date = request.args.get("end_date", "")
-    
+    product_filter = request.args.get("product_id", "")  # NEW: Product filter
+
+    # Fetch all active products for dropdown
+    cursor.execute("SELECT id, product_name FROM prebooking_products WHERE status='active' ORDER BY product_name")
+    products = cursor.fetchall()
+
     # ---------- 4. Base query ----------
     base_query = """
         FROM prebooking_orders po
-        LEFT JOIN prebooking_products pp ON po.product_id = pp.id
         LEFT JOIN restaurant r ON po.restaurant_id = r.id
-        WHERE 1=1
+        LEFT JOIN prebooking_order_items poi ON po.id = poi.prebooking_order_id
+        WHERE po.is_deleted = 0
     """
     params = []
     
@@ -4632,11 +4956,13 @@ def prebooking_list():
         base_query += " AND po.restaurant_id = %s"
         params.append(branch_id)
 
-    # Search, status, payment, date filters (same as before)
+    # Search filter
     if search:
         base_query += " AND (po.order_number LIKE %s OR po.username LIKE %s OR po.mobile_number LIKE %s)"
         s = f"%{search}%"
         params.extend([s, s, s])
+
+    # Other filters
     if status_filter:
         base_query += " AND po.order_status = %s"
         params.append(status_filter)
@@ -4653,43 +4979,62 @@ def prebooking_list():
         base_query += " AND po.delivery_date <= %s"
         params.append(end_date)
 
-    # ---------- 5. Summary totals (independent of pagination) ----------
+    # NEW: Product Filter - Match any item in order
+    if product_filter:
+        base_query += " AND poi.product_id = %s"
+        params.append(product_filter)
+
+    # ---------- 5. Summary totals ----------
     summary_query = f"""
         SELECT 
-            COALESCE(SUM(po.total_amount), 0)      AS total_prebooked,
-            COALESCE(SUM(po.amount_paid), 0)       AS total_paid,
-            COALESCE(SUM(po.pending_balance), 0)   AS total_pending
+            COALESCE(SUM(po.final_amount), 0)        AS total_prebooked,
+            COALESCE(SUM(po.amount_paid), 0)         AS total_paid,
+            COALESCE(SUM(po.pending_balance), 0)     AS total_pending
         {base_query}
     """
     cursor.execute(summary_query, params)
     summary = cursor.fetchone()
 
-    # ---------- 6. Total rows for pagination ----------
-    cursor.execute(f"SELECT COUNT(*) as total {base_query}", params)
+    # ---------- 6. Total rows ----------
+    count_query = f"SELECT COUNT(DISTINCT po.id) as total {base_query}"
+    cursor.execute(count_query, params)
     total_records = cursor.fetchone()["total"]
     total_pages = (total_records + per_page - 1) // per_page
 
-    # ---------- 7. Fetch paginated orders ----------
+    # ---------- 7. Fetch orders with DISTINCT to avoid duplicates ----------
     orders_query = f"""
-        SELECT po.*, pp.product_name, r.restaurantname
+        SELECT DISTINCT po.*, r.restaurantname
         {base_query}
+        GROUP BY po.id
         ORDER BY po.created_at DESC
         LIMIT %s OFFSET %s
     """
     cursor.execute(orders_query, (*params, per_page, offset))
     orders = cursor.fetchall()
 
+    # Attach product names to each order
+    for order in orders:
+        cursor.execute("""
+            SELECT product_name, quantity 
+            FROM prebooking_order_items 
+            WHERE prebooking_order_id = %s
+        """, (order['id'],))
+        items = cursor.fetchall()
+        product_names = [f"{item['product_name']} ({item['quantity']})" for item in items] if items else ["No products"]
+        order['product_names'] = ", ".join(product_names)
+
     cursor.close()
     conn.close()
 
-    # ---------- 8. Render ----------
     return render_template(
         'prebooking_list.html',
         user=user,
         orders=orders,
         summary=summary,
         branches=branches,
-        selected_branch=branch_id,
+        products=products,                    # Pass products to template
+        selected_branch=branch_id or "",
+        selected_product=product_filter or "", # Preserve selected product
         page=page,
         total_pages=total_pages,
         search=search,
@@ -4713,17 +5058,25 @@ def view_prebooking(order_id):
     
     # Fetch order details
     cursor.execute("""
-        SELECT po.*, pp.product_name, r.restaurantname
+        SELECT po.*, r.restaurantname
         FROM prebooking_orders po
-        LEFT JOIN prebooking_products pp ON po.product_id = pp.id
         LEFT JOIN restaurant r ON po.restaurant_id = r.id
-        WHERE po.id = %s
+        WHERE po.id = %s AND po.is_deleted = 0
     """, (order_id,))
     order = cursor.fetchone()
     
     if not order:
         flash("Order not found!", "error")
         return redirect(url_for('prebooking_list'))
+    
+    # Fetch order items
+    cursor.execute("""
+        SELECT poi.* 
+        FROM prebooking_order_items poi
+        WHERE poi.prebooking_order_id = %s
+        ORDER BY poi.id
+    """, (order_id,))
+    order_items = cursor.fetchall()
     
     # Fetch payment history
     cursor.execute("""
@@ -4740,10 +5093,236 @@ def view_prebooking(order_id):
         'view_prebooking.html',
         user=user,
         order=order,
+        order_items=order_items,
         payments=payments,
-        datetime=datetime   # ADD THIS LINE
+        datetime=datetime
     )
 
+# ==================== EDIT PREBOOKING ====================
+@app.route('/edit-prebooking/<int:order_id>', methods=['GET', 'POST'])
+def edit_prebooking(order_id):
+    if "user" not in session or session["user"]["role"] != 'admin':
+        return redirect("/login")
+
+    user = session["user"]
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    if request.method == 'GET':
+        # Fetch order details
+        cursor.execute("""
+            SELECT po.*, r.restaurantname
+            FROM prebooking_orders po
+            LEFT JOIN restaurant r ON po.restaurant_id = r.id
+            WHERE po.id = %s AND po.is_deleted = 0
+        """, (order_id,))
+        order = cursor.fetchone()
+
+        if not order:
+            flash("Order not found!", "error")
+            return redirect(url_for('prebooking_list'))
+
+        # Fetch order items
+        cursor.execute("""
+            SELECT poi.*
+            FROM prebooking_order_items poi
+            WHERE poi.prebooking_order_id = %s
+        """, (order_id,))
+        order_items = cursor.fetchall()
+
+        cursor.execute("SELECT id, product_name, price FROM prebooking_products ORDER BY product_name")
+        products = cursor.fetchall()
+
+        cursor.execute("SELECT id, restaurantname FROM restaurant ORDER BY restaurantname")
+        restaurants = cursor.fetchall()
+
+        cursor.close()
+        conn.close()
+
+        return render_template(
+            'edit_prebooking.html',
+            order=order,
+            order_items=order_items,
+            user=user,
+            products=products,
+            restaurants=restaurants,
+            today=date.today().isoformat(),
+            datetime=datetime
+        )
+
+    elif request.method == 'POST':
+        try:
+            # === Fetch current order to compare amount_paid ===
+            cursor.execute("SELECT amount_paid FROM prebooking_orders WHERE id = %s", (order_id,))
+            current = cursor.fetchone()
+            if not current:
+                flash("Order not found!", "error")
+                return redirect(url_for('prebooking_list'))
+
+            old_amount_paid = float(current['amount_paid'])
+            new_amount_paid = float(request.form.get('amount_paid', 0))
+            payment_method = request.form.get('payment_method', 'cash')
+            payment_remarks = request.form.get('payment_remarks', '').strip()
+            if not payment_remarks:
+                payment_remarks = 'Payment adjusted on edit'
+
+            # === Extract other form data ===
+            username = request.form['username']
+            mobile_number = request.form['mobile_number']
+            email = request.form.get('email', '')
+            delivery_address = request.form['delivery_address']
+            delivery_date = request.form['delivery_date']
+            delivery_time = request.form['delivery_time']
+            notes = request.form.get('notes', '')
+            restaurant_id = request.form['restaurant_id']
+            overall_discount = float(request.form.get('overall_discount', 0))
+
+            # === Product items ===
+            product_ids = request.form.getlist('product_id[]')
+            quantities = request.form.getlist('quantity[]')
+            product_discounts = request.form.getlist('product_discount[]')
+
+            # === Recalculate totals ===
+            subtotal = 0
+            product_discount_total = 0
+            items_data = []
+
+            for product_id, quantity, product_discount in zip(product_ids, quantities, product_discounts):
+                if not product_id or not quantity or int(quantity) <= 0:
+                    continue
+
+                cursor.execute("SELECT id, product_name, price FROM prebooking_products WHERE id=%s", (product_id,))
+                product = cursor.fetchone()
+                if not product:
+                    continue
+
+                qty = int(quantity)
+                unit_price = float(product['price'])
+                item_discount = float(product_discount) if product_discount else 0
+                item_subtotal = unit_price * qty
+                item_total = max(0, item_subtotal - item_discount)
+
+                subtotal += item_subtotal
+                product_discount_total += item_discount
+
+                items_data.append({
+                    'product_id': product_id,
+                    'product_name': product['product_name'],
+                    'unit_price': unit_price,
+                    'quantity': qty,
+                    'product_discount': item_discount,
+                    'item_total': item_total
+                })
+
+            if not items_data:
+                flash("Please add at least one product!", "error")
+                return redirect(url_for('edit_prebooking', order_id=order_id))
+
+            total_amount = max(0, subtotal - product_discount_total)
+            final_amount = max(0, total_amount - overall_discount)
+            pending_balance = max(0, final_amount - new_amount_paid)
+
+            # Determine payment status
+            if pending_balance <= 0:
+                payment_status = 'completed'
+            elif new_amount_paid > 0:
+                payment_status = 'partial'
+            else:
+                payment_status = 'pending'
+
+            # === Update main order ===
+            cursor.execute("""
+                UPDATE prebooking_orders SET
+                    username = %s, mobile_number = %s, email = %s,
+                    delivery_address = %s, subtotal = %s, product_discount_total = %s,
+                    overall_discount = %s, total_amount = %s, final_amount = %s,
+                    amount_paid = %s, pending_balance = %s, payment_status = %s,
+                    delivery_date = %s, delivery_time = %s, notes = %s,
+                    restaurant_id = %s
+                WHERE id = %s
+            """, (
+                username, mobile_number, email, delivery_address,
+                subtotal, product_discount_total, overall_discount,
+                total_amount, final_amount, new_amount_paid, pending_balance,
+                payment_status, delivery_date, delivery_time, notes,
+                restaurant_id, order_id
+            ))
+
+            # === Replace order items ===
+            cursor.execute("DELETE FROM prebooking_order_items WHERE prebooking_order_id = %s", (order_id,))
+            for item in items_data:
+                cursor.execute("""
+                    INSERT INTO prebooking_order_items (
+                        prebooking_order_id, product_id, product_name, unit_price,
+                        quantity, product_discount, item_total
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    order_id, item['product_id'], item['product_name'],
+                    item['unit_price'], item['quantity'], item['product_discount'],
+                    item['item_total']
+                ))
+
+            # === Record additional payment only if increased ===
+            if new_amount_paid > old_amount_paid:
+                additional_amount = new_amount_paid - old_amount_paid
+                cursor.execute("""
+                    INSERT INTO prebooking_payments 
+                    (order_id, amount, payment_method, remarks, payment_date)
+                    VALUES (%s, %s, %s, %s, NOW())
+                """, (order_id, additional_amount, payment_method, payment_remarks))
+
+            # === If amount_paid decreased (rare case), you may want to log or warn ===
+            elif new_amount_paid < old_amount_paid:
+                # Optional: Log this as a refund or adjustment
+                reduction = old_amount_paid - new_amount_paid
+                cursor.execute("""
+                    INSERT INTO prebooking_payments 
+                    (order_id, amount, payment_method, remarks, payment_date)
+                    VALUES (%s, %s, %s, %s, NOW())
+                """, (order_id, -reduction, 'adjustment', f"Amount reduced by admin (edit): {payment_remarks}"))
+
+            conn.commit()
+            flash("Pre-booking updated successfully!", "success")
+
+        except Exception as e:
+            conn.rollback()
+            flash(f"Error updating order: {str(e)}", "error")
+        finally:
+            cursor.close()
+            conn.close()
+
+        return redirect(url_for('prebooking_list'))
+
+# ==================== DELETE PREBOOKING ====================
+@app.route('/delete-prebooking/<int:order_id>', methods=['POST'])
+def delete_prebooking(order_id):
+    if "user" not in session or session["user"]["role"] != 'admin':
+        return redirect("/login")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            UPDATE prebooking_orders 
+            SET is_deleted = 1 
+            WHERE id = %s AND is_deleted = 0
+        """, (order_id,))
+        
+        if cursor.rowcount > 0:
+            flash("Pre-booking deleted successfully!", "success")
+        else:
+            flash("Order not found or already deleted.", "error")
+            
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        flash(f"Error deleting order: {str(e)}", "error")
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('prebooking_list'))
 
 # ==================== ADD PAYMENT ====================
 @app.route('/add-payment/<int:order_id>', methods=['POST'])
@@ -4767,9 +5346,9 @@ def add_payment(order_id):
             flash("Order not found!", "error")
             return redirect(url_for('prebooking_list'))
         
-        # Calculate new pending balance
+        # Calculate new pending balance (using final_amount instead of total_amount)
         new_amount_paid = float(order['amount_paid']) + amount
-        new_pending = float(order['total_amount']) - new_amount_paid
+        new_pending = float(order['final_amount']) - new_amount_paid
         
         # Determine payment status
         if new_pending <= 0:

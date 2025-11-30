@@ -1,0 +1,221 @@
+{% extends 'base.html' %} {% block content %}
+
+<div class="page-wrapper">
+  <div class="content">
+    <div class="page-header d-flex justify-content-between align-items-center">
+      <div class="page-title">
+        <h4>Pre-Booking Products</h4>
+      </div>
+      <button
+        class="btn btn-primary"
+        data-bs-toggle="modal"
+        data-bs-target="#productModal"
+        onclick="openAddModal()"
+      >
+        <i class="fas fa-plus"></i> Add Product
+      </button>
+    </div>
+
+    <div class="card">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-hover">
+        <thead class="table-light">
+          <tr>
+            <th>#</th>
+            <th>Product Name</th>
+            <th>Price</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in products %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td><strong>{{ p.product_name }}</strong></td>
+            <td>₹{{ "%.2f"|format(p.price) }}</td>
+            <td>
+              <span class="badge {% if p.status == 'active' %}bg-success{% else %}bg-secondary{% endif %}">
+                {{ p.status|upper }}
+              </span>
+            </td>
+            <td>
+              <!-- View Button -->
+              <button type="button" class="btn btn-sm btn-info" title="View"
+                      onclick="viewProduct({{ p.id }}, '{{ p.product_name|replace("'", "\\'") }}', {{ p.price }}, '{{ p.status }}')">
+                View
+              </button>
+
+              <!-- Edit Button -->
+              <button type="button" class="btn btn-sm btn-warning ms-1" title="Edit"
+                      onclick="editProduct({{ p.id }}, '{{ p.product_name|replace("'", "\\'") }}', {{ p.price }}, '{{ p.status }}')">
+                Edit
+              </button>
+
+              <!-- Delete Button -->
+              <button type="button" class="btn btn-sm btn-danger ms-1" title="Delete"
+                      onclick="deleteProduct({{ p.id }}, '{{ p.product_name|replace("'", "\\'") }}')">
+                Delete
+              </button>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-muted py-4">No products found</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MODALS ==================== -->
+<!-- Add / Edit / View Modal -->
+<div class="modal fade" id="productModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalTitle">Add Product</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="productForm">
+        <div class="modal-body">
+          <input type="hidden" id="productId">
+          <div class="mb-3">
+            <label class="form-label">Product Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="product_name" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Price <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" id="price" step="0.01" min="0" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Status</label>
+            <select class="form-select" id="status">
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="submit" class="btn btn-primary" id="submitBtn">Add Product</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title">Confirm Delete</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Delete product: <strong id="deleteProductName"></strong>?</p>
+        <p class="text-danger"><small>This action cannot be undone.</small></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDelete">Yes, Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SCRIPT (MUST BE AT THE END) ==================== -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let currentProductId = null;
+
+// Enable fields
+function enableFields() {
+  document.getElementById('product_name').removeAttribute('readonly');
+  document.getElementById('product_name').removeAttribute('disabled');
+  document.getElementById('price').removeAttribute('readonly');
+  document.getElementById('price').removeAttribute('disabled');
+  document.getElementById('status').removeAttribute('disabled');
+  document.getElementById('submitBtn').style.display = 'block';
+}
+
+// Disable fields (for View mode)
+function disableFields() {
+  document.getElementById('product_name').setAttribute('readonly', true);
+  document.getElementById('price').setAttribute('readonly', true);
+  document.getElementById('status').setAttribute('disabled', true);
+  document.getElementById('submitBtn').style.display = 'none';
+}
+
+// Add New Product
+function openAddModal() {
+  document.getElementById('modalTitle').textContent = 'Add New Product';
+  document.getElementById('submitBtn').textContent = 'Add Product';
+  document.getElementById('productForm').reset();
+  document.getElementById('productId').value = '';
+  enableFields();
+  new bootstrap.Modal(document.getElementById('productModal')).show();
+}
+
+// Edit Product
+function editProduct(id, name, price, status) {
+  document.getElementById('modalTitle').textContent = 'Edit Product';
+  document.getElementById('submitBtn').textContent = 'Update Product';
+  document.getElementById('productId').value = id;
+  document.getElementById('product_name').value = name;
+  document.getElementById('price').value = price;
+  document.getElementById('status').value = status;
+  enableFields();
+  new bootstrap.Modal(document.getElementById('productModal')).show();
+}
+
+// View Product (read-only)
+function viewProduct(id, name, price, status) {
+  document.getElementById('modalTitle').textContent = 'View Product';
+  document.getElementById('product_name').value = name;
+  document.getElementById('price').value = price;
+  document.getElementById('status').value = status;
+  disableFields();
+  new bootstrap.Modal(document.getElementById('productModal')).show();
+}
+
+// Delete Product
+function deleteProduct(id, name) {
+  currentProductId = id;
+  document.getElementById('deleteProductName').textContent = name;
+  new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+
+// Form Submit
+document.getElementById('productForm').onsubmit = function(e) {
+  e.preventDefault();
+  const id = document.getElementById('productId').value;
+  const url = id ? `/prebooking-products/update/${id}` : '/prebooking-products/add';
+
+  const fd = new FormData();
+  fd.append('product_name', document.getElementById('product_name').value.trim());
+  fd.append('price', document.getElementById('price').value);
+  fd.append('status', document.getElementById('status').value);
+
+  fetch(url, { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(res => {
+      alert(res.success ? res.message : res.message);
+      if (res.success) location.reload();
+    });
+};
+
+// Confirm Delete
+document.getElementById('confirmDelete').onclick = function() {
+  fetch(`/prebooking-products/delete/${currentProductId}`, { method: 'POST' })
+    .then(r => r.json())
+    .then(res => {
+      alert(res.success ? "Deleted!" : res.message);
+      if (res.success) location.reload();
+    });
+};
+</script>
+
+{% endblock %}

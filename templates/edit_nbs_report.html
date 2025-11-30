@@ -1,5 +1,4 @@
 {% extends 'base.html' %}
-
 {% block content %}
 <div class="page-wrapper">
   <div class="content">
@@ -16,9 +15,7 @@
         {% if messages %}
         <div class="flash-messages">
           {% for category, message in messages %}
-          <div class="alert alert-{{ 'danger' if category=='error' else 'success' }}">
-            {{ message }}
-          </div>
+          <div class="alert alert-{{ 'danger' if category=='error' else 'success' }}">{{ message }}</div>
           {% endfor %}
         </div>
         {% endif %}
@@ -27,19 +24,21 @@
         <form method="POST" action="/edit-nbs-report/{{ report.id }}">
           <div class="row">
             <div class="col-md-6">
-              <label>Date</label>
-              <input type="date" class="form-control" name="report_date"
-                value="{{ report.report_date.strftime('%Y-%m-%d') }}" required>
+              <label>Date <span class="text-danger">*</span></label>
+              <input type="date" class="form-control" id="report_date" name="report_date"
+                     value="{{ report.report_date.strftime('%Y-%m-%d') }}" required>
             </div>
             <div class="col-md-6">
-              <label>Restaurant</label>
+              <label>Restaurant <span class="text-danger">*</span></label>
               {% if user.role != 'admin' %}
               <input type="text" class="form-control" value="{{ report.restaurant_name }}" disabled>
               <input type="hidden" name="restaurant_id" value="{{ report.restaurant_id }}">
+              <input type="hidden" id="restaurant_id" value="{{ report.restaurant_id }}">
               {% else %}
-              <select class="form-control" name="restaurant_id" required>
+              <select class="form-control" id="restaurant_id" name="restaurant_id" required>
+                <option value="">Select Branch</option>
                 {% for r in restaurants %}
-                <option value="{{ r.id }}" {% if r.id==selected_restaurant_id %}selected{% endif %}>
+                <option value="{{ r.id }}" {% if r.id == report.restaurant_id %}selected{% endif %}>
                   {{ r.restaurantname }}
                 </option>
                 {% endfor %}
@@ -54,17 +53,19 @@
             <div class="col-md-4">
               <label>PetPooja Total</label>
               <input type="number" step="0.01" class="form-control calc-input" id="petpooja_total" name="petpooja_total"
-                value="{{ report.petpooja_total }}">
+                     value="{{ report.petpooja_total }}">
             </div>
             <div class="col-md-4">
               <label>NS Total</label>
               <input type="number" step="0.01" class="form-control calc-input" id="ns_total" name="ns_total"
-                value="{{ report.ns_total }}">
+                     value="{{ report.ns_total }}">
             </div>
             <div class="col-md-4">
-              <label>Outdoor Catering</label>
-              <input type="number" step="0.01" class="form-control calc-input" id="outdoor_catering"
-                name="outdoor_catering" value="{{ report.outdoor_catering }}">
+              <label>Outdoor Catering (Pre-Booking Paid Today)</label>
+              <input type="number" step="0.01" class="form-control" id="outdoor_catering_display"
+                     value="{{ report.outdoor_catering }}" {% if user.role != 'admin' %}disabled{% endif %}>
+              <input type="hidden" class="calc-input" name="outdoor_catering" id="outdoor_catering"
+                     value="{{ report.outdoor_catering }}">
             </div>
           </div>
 
@@ -74,20 +75,19 @@
             <div class="col-md-4">
               <label>UPI</label>
               <input type="number" step="0.01" class="form-control calc-input" id="upi" name="upi"
-                value="{{ report.upi }}">
+                     value="{{ report.upi }}">
             </div>
             <div class="col-md-4">
               <label>Cash</label>
               <input type="number" step="0.01" class="form-control calc-input" id="cash" name="cash"
-                value="{{ report.cash }}">
+                     value="{{ report.cash }}">
             </div>
             <div class="col-md-4">
               <label>Misc Expense</label>
-              <!-- Disabled visible field -->
               <input type="number" step="0.01" class="form-control" id="r_expense_display"
-                value="{{ report.r_expense }}" disabled>
-              <!-- Hidden field for submission -->
-              <input type="hidden" class="calc-input" name="r_expense" id="r_expense" value="{{ report.r_expense }}">
+                     value="{{ report.r_expense }}" disabled>
+              <input type="hidden" class="calc-input" name="r_expense" id="r_expense"
+                     value="{{ report.r_expense }}">
             </div>
           </div>
 
@@ -97,26 +97,25 @@
             <div class="col-md-6">
               <label>Swiggy</label>
               <input type="number" step="0.01" class="form-control calc-input" id="swiggy" name="swiggy"
-                value="{{ report.swiggy }}">
+                     value="{{ report.swiggy }}">
             </div>
             <div class="col-md-6">
               <label>Zomato</label>
               <input type="number" step="0.01" class="form-control calc-input" id="zomato" name="zomato"
-                value="{{ report.zomato }}">
+                     value="{{ report.zomato }}">
             </div>
           </div>
 
-          <!-- Live Results Section -->
           <hr>
           <h5>Live Calculation Summary</h5>
           <div class="row">
             <div class="col-md-4">
-              <label>Net Counter</label>
-              <input type="text" class="form-control" id="net_counter" value="{{ report.net_counter }}" readonly>
-            </div>
-            <div class="col-md-4">
               <label>Net Sales</label>
               <input type="text" class="form-control" id="net_sales" value="{{ report.net_sales }}" readonly>
+            </div>
+            <div class="col-md-4">
+              <label>Net Counter</label>
+              <input type="text" class="form-control" id="net_counter" value="{{ report.net_counter }}" readonly>
             </div>
             <div class="col-md-4">
               <label>Difference</label>
@@ -126,7 +125,7 @@
 
           <div class="mt-4">
             <button type="submit" class="btn btn-primary">Update Report</button>
-            <a href="{{ url_for('nbs_reports') }}" class="btn btn-secondary">Cancel</a>
+            <a href="{{ url_for('nbs_reports') }}" class="btn btn-secondary ms-2">Cancel</a>
           </div>
         </form>
       </div>
@@ -135,44 +134,89 @@
 </div>
 
 <script>
-  function parseNum(id) {
-    const el = document.getElementById(id);
-    if (!el) return 0;
-    return parseFloat(el.value) || 0;
+// Auto-fetch Misc Expense + Pre-Booking Paid Amount
+function updateAutoFields() {
+  const branchId = document.getElementById('restaurant_id')?.value || {{ report.restaurant_id }};
+  const reportDate = document.getElementById('report_date').value;
+
+  if (!branchId || !reportDate) {
+    document.getElementById('r_expense').value = 0;
+    document.getElementById('r_expense_display').value = 0;
+    document.getElementById('outdoor_catering').value = 0;
+    document.getElementById('outdoor_catering_display').value = 0;
+    calculateLive();
+    return;
   }
 
-  function calculateLive() {
-    const petpooja = parseNum('petpooja_total');
-    const ns_total = parseNum('ns_total');
-    const outdoor = parseNum('outdoor_catering');
-    const total_income = petpooja + ns_total + outdoor;
+  Promise.all([
+    fetch(`/fetch-misc-expense?restaurant_id=${branchId}&report_date=${reportDate}`).then(r => r.json()),
+    fetch(`/fetch-prebooking-paid-today?restaurant_id=${branchId}&report_date=${reportDate}`).then(r => r.json())
+  ])
+  .then(([miscData, prebookData]) => {
+    const misc = parseFloat(miscData.total_misc || 0).toFixed(2);
+    const prebook = parseFloat(prebookData.total_prebooking_paid || 0).toFixed(2);
 
-    const swiggy = parseNum('swiggy');
-    const zomato = parseNum('zomato');
-    const net_sales = total_income + (swiggy + zomato); // ✅ FIXED (was minus before)
+    document.getElementById('r_expense').value = misc;
+    document.getElementById('r_expense_display').value = misc;
 
-    const upi = parseNum('upi');
-    const cash = parseNum('cash');
-    const r_expense = parseNum('r_expense');
-    const net_counter = upi + cash + r_expense;
+    document.getElementById('outdoor_catering').value = prebook;
+    document.getElementById('outdoor_catering_display').value = prebook;
 
-    const difference = net_counter - net_sales; // ✅ FIXED (was wrong earlier)
-
-    document.getElementById('net_counter').value = net_counter.toFixed(2);
-    document.getElementById('net_sales').value = net_sales.toFixed(2);
-
-    const diffEl = document.getElementById('difference');
-    diffEl.value = difference.toFixed(2);
-    diffEl.classList.remove('text-success', 'text-danger');
-    if (difference < 0) diffEl.classList.add('text-danger');
-    else diffEl.classList.add('text-success');
-  }
-
-  document.querySelectorAll('.calc-input').forEach(el => {
-    el.addEventListener('input', calculateLive);
+    calculateLive();
+  })
+  .catch(err => {
+    console.error("Fetch error:", err);
+    // Keep current values on error
+    calculateLive();
   });
+}
 
-  // Run once on load
-  calculateLive();
+// Trigger on date or branch change
+document.getElementById('report_date').addEventListener('change', updateAutoFields);
+{% if user.role == 'admin' %}
+document.getElementById('restaurant_id').addEventListener('change', updateAutoFields);
+{% endif %}
+
+// Initial load
+updateAutoFields();
+
+// Live calculation
+function parseNum(id) {
+  const el = document.getElementById(id);
+  return el ? (parseFloat(el.value) || 0) : 0;
+}
+
+function calculateLive() {
+  const petpooja = parseNum('petpooja_total');
+  const ns_total = parseNum('ns_total');
+  const outdoor = parseNum('outdoor_catering');
+  const total_income = petpooja + ns_total + outdoor;
+
+  const upi = parseNum('upi');
+  const cash = parseNum('cash');
+  const r_expense = parseNum('r_expense');
+  const swiggy = parseNum('swiggy');
+  const zomato = parseNum('zomato');
+
+  const net_sales = total_income;
+  const net_counter = upi + cash + r_expense + swiggy + zomato;
+  const difference = net_counter - net_sales;
+
+  document.getElementById('net_sales').value = net_sales.toFixed(2);
+  document.getElementById('net_counter').value = net_counter.toFixed(2);
+
+  const diffEl = document.getElementById('difference');
+  diffEl.value = difference.toFixed(2);
+  diffEl.classList.remove('text-success', 'text-danger');
+  diffEl.classList.add(difference < 0 ? 'text-danger' : 'text-success');
+}
+
+// Re-calculate when user types
+document.querySelectorAll('.calc-input').forEach(input => {
+  input.addEventListener('input', calculateLive);
+});
+
+// Run once on load
+calculateLive();
 </script>
 {% endblock %}
