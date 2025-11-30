@@ -18,7 +18,8 @@
         </div>
         {% endfor %} {% endif %} {% endwith %}
 
-        <form method="POST" action="/add-prebooking">
+        <form method="POST" action="/add-prebooking" id="prebookingForm">
+          <!-- Customer Information Section -->
           <div class="row">
             <div class="col-md-6">
               <div class="form-group">
@@ -86,20 +87,17 @@
           <hr />
           <h5>Order Details</h5>
 
-          <div class="row">
-            <div class="col-md-6">
+          <!-- Product Selection Section -->
+          <div class="row mb-3">
+            <div class="col-md-8">
               <div class="form-group">
-                <label>Select Product <span class="text-danger">*</span></label>
-                <select
-                  class="form-control"
-                  id="product_id"
-                  name="product_id"
-                  required
-                >
+                <label>Select Product</label>
+                <select class="form-control" id="product_select">
                   <option value="">-- Select Product --</option>
                   {% for product in products %}
                   <option
                     value="{{ product.id }}"
+                    data-name="{{ product.product_name }}"
                     data-price="{{ product.price }}"
                   >
                     {{ product.product_name }} - ₹{{ product.price }}
@@ -108,45 +106,98 @@
                 </select>
               </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
               <div class="form-group">
-                <label>Quantity <span class="text-danger">*</span></label>
+                <label>Quantity</label>
                 <input
                   type="number"
                   class="form-control"
-                  id="quantity"
-                  name="quantity"
+                  id="product_quantity"
                   value="1"
                   min="1"
-                  required
                 />
               </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
               <div class="form-group">
-                <label>Unit Price</label>
-                <input
-                  type="text"
-                  class="form-control"
-                  id="unit_price"
-                  readonly
-                />
+                <label>&nbsp;</label>
+                <button
+                  type="button"
+                  class="btn btn-primary w-100"
+                  onclick="addProductRow()"
+                >
+                  <i class="fas fa-plus"></i> Add
+                </button>
               </div>
             </div>
           </div>
 
+          <!-- Products Table -->
+          <div class="table-responsive">
+            <table class="table table-bordered" id="productsTable">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Unit Price</th>
+                  <th>Quantity</th>
+                  <th>Product Discount</th>
+                  <th>Item Total</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="productsTableBody">
+                <!-- Product rows will be added here dynamically -->
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3" class="text-end">
+                    <strong>Subtotal:</strong>
+                  </td>
+                  <td colspan="3" id="subtotal">₹0.00</td>
+                </tr>
+                <tr>
+                  <td colspan="3" class="text-end">
+                    <strong>Product Discounts Total:</strong>
+                  </td>
+                  <td colspan="3" id="product_discount_total">₹0.00</td>
+                </tr>
+                <tr>
+                  <td colspan="3" class="text-end">
+                    <strong>Total Amount:</strong>
+                  </td>
+                  <td colspan="3" id="total_amount">₹0.00</td>
+                </tr>
+                <tr>
+                  <td colspan="3" class="text-end">
+                    <strong>Overall Discount:</strong>
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      class="form-control"
+                      id="overall_discount"
+                      name="overall_discount"
+                      value="0"
+                      min="0"
+                      step="0.01"
+                    />
+                  </td>
+                  <td colspan="2" id="overall_discount_display">₹0.00</td>
+                </tr>
+                <tr class="table-success">
+                  <td colspan="3" class="text-end">
+                    <strong>Final Amount:</strong>
+                  </td>
+                  <td colspan="3" id="final_amount">₹0.00</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <!-- Payment Section -->
+          <hr />
+          <h5>Initial Payment</h5>
           <div class="row">
-            <div class="col-md-4">
-              <div class="form-group">
-                <label>Total Amount</label>
-                <input
-                  type="text"
-                  class="form-control"
-                  id="total_amount"
-                  readonly
-                />
-              </div>
-            </div>
             <div class="col-md-4">
               <div class="form-group">
                 <label>Amount Paid</label>
@@ -163,12 +214,42 @@
             </div>
             <div class="col-md-4">
               <div class="form-group">
+                <label>Payment Method</label>
+                <select
+                  class="form-control"
+                  id="payment_method"
+                  name="payment_method"
+                >
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="card">Card</option>
+                  <option value="online">Online</option>
+                </select>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="form-group">
+                <label>Remarks</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="payment_remarks"
+                  name="payment_remarks"
+                  placeholder="e.g. Paid via PhonePe"
+                />
+              </div>
+            </div>
+          </div>
+          <div class="row mt-2">
+            <div class="col-md-4">
+              <div class="form-group">
                 <label>Pending Balance</label>
                 <input
                   type="text"
                   class="form-control"
                   id="pending_balance"
                   readonly
+                  value="₹0.00"
                 />
               </div>
             </div>
@@ -226,33 +307,198 @@
   </div>
 </div>
 
+<style>
+  .product-row {
+    transition: background-color 0.3s;
+  }
+  .product-row:hover {
+    background-color: #f8f9fa;
+  }
+  .remove-product {
+    color: #dc3545;
+    cursor: pointer;
+  }
+  .remove-product:hover {
+    color: #bd2130;
+  }
+</style>
+
 <script>
-  const productSelect = document.getElementById("product_id");
-  const quantityInput = document.getElementById("quantity");
-  const unitPriceInput = document.getElementById("unit_price");
-  const totalAmountInput = document.getElementById("total_amount");
-  const amountPaidInput = document.getElementById("amount_paid");
-  const pendingBalanceInput = document.getElementById("pending_balance");
+  let productRows = [];
 
-  function calculateTotals() {
-    const selectedOption = productSelect.options[productSelect.selectedIndex];
-    const price = parseFloat(selectedOption.getAttribute("data-price")) || 0;
-    const quantity = parseInt(quantityInput.value) || 0;
-    const amountPaid = parseFloat(amountPaidInput.value) || 0;
+  function addProductRow() {
+    const productSelect = document.getElementById("product_select");
+    const quantityInput = document.getElementById("product_quantity");
 
-    const total = price * quantity;
-    const pending = total - amountPaid;
+    const productId = productSelect.value;
+    const productName =
+      productSelect.options[productSelect.selectedIndex].getAttribute(
+        "data-name"
+      );
+    const unitPrice = parseFloat(
+      productSelect.options[productSelect.selectedIndex].getAttribute(
+        "data-price"
+      )
+    );
+    const quantity = parseInt(quantityInput.value) || 1;
 
-    unitPriceInput.value = price.toFixed(2);
-    totalAmountInput.value = total.toFixed(2);
-    pendingBalanceInput.value = pending.toFixed(2);
+    if (!productId) {
+      alert("Please select a product");
+      return;
+    }
+
+    if (quantity < 1) {
+      alert("Please enter a valid quantity");
+      return;
+    }
+
+    // Check if product already exists
+    const existingIndex = productRows.findIndex(
+      (row) => row.productId === productId
+    );
+    if (existingIndex > -1) {
+      productRows[existingIndex].quantity += quantity;
+      renderProductRows();
+      return;
+    }
+
+    // Add new product
+    const productRow = {
+      productId: productId,
+      productName: productName,
+      unitPrice: unitPrice,
+      quantity: quantity,
+      productDiscount: 0,
+    };
+
+    productRows.push(productRow);
+    renderProductRows();
+
+    // Reset inputs
+    productSelect.value = "";
+    quantityInput.value = "1";
   }
 
-  productSelect.addEventListener("change", calculateTotals);
-  quantityInput.addEventListener("input", calculateTotals);
-  amountPaidInput.addEventListener("input", calculateTotals);
+  function removeProductRow(index) {
+    productRows.splice(index, 1);
+    renderProductRows();
+  }
 
-  // Initial calculation
-  calculateTotals();
+  function updateProductQuantity(index, change) {
+    productRows[index].quantity += change;
+    if (productRows[index].quantity < 1) {
+      productRows[index].quantity = 1;
+    }
+    renderProductRows();
+  }
+
+  function updateProductDiscount(index, discount) {
+    productRows[index].productDiscount = parseFloat(discount) || 0;
+    renderProductRows();
+  }
+
+  function renderProductRows() {
+    const tbody = document.getElementById("productsTableBody");
+    let html = "";
+
+    productRows.forEach((row, index) => {
+      const itemSubtotal = row.unitPrice * row.quantity;
+      const itemTotal = itemSubtotal - row.productDiscount;
+
+      html += `
+        <tr class="product-row">
+          <td>
+            ${row.productName}
+            <input type="hidden" name="product_id[]" value="${row.productId}">
+          </td>
+          <td>₹${row.unitPrice.toFixed(2)}</td>
+          <td>
+            <div class="input-group input-group-sm">
+              <button type="button" class="btn btn-outline-secondary" onclick="updateProductQuantity(${index}, -1)">-</button>
+              <input type="number" class="form-control text-center" name="quantity[]" value="${
+                row.quantity
+              }" min="1" onchange="productRows[${index}].quantity = parseInt(this.value) || 1; renderProductRows();">
+              <button type="button" class="btn btn-outline-secondary" onclick="updateProductQuantity(${index}, 1)">+</button>
+            </div>
+          </td>
+          <td>
+            <input type="number" class="form-control form-control-sm" name="product_discount[]" value="${row.productDiscount.toFixed(
+              2
+            )}" min="0" step="0.01" onchange="updateProductDiscount(${index}, this.value)">
+          </td>
+          <td>₹${itemTotal.toFixed(2)}</td>
+          <td>
+            <button type="button" class="btn btn-sm btn-danger remove-product" onclick="removeProductRow(${index})">
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+
+    tbody.innerHTML =
+      html ||
+      '<tr><td colspan="6" class="text-center text-muted">No products added</td></tr>';
+    calculateTotals();
+  }
+
+  function calculateTotals() {
+    let subtotal = 0;
+    let productDiscountTotal = 0;
+
+    productRows.forEach((row) => {
+      const itemSubtotal = row.unitPrice * row.quantity;
+      subtotal += itemSubtotal;
+      productDiscountTotal += row.productDiscount;
+    });
+
+    const totalAmount = subtotal - productDiscountTotal;
+    const overallDiscount =
+      parseFloat(document.getElementById("overall_discount").value) || 0;
+    const finalAmount = Math.max(0, totalAmount - overallDiscount);
+    const amountPaid =
+      parseFloat(document.getElementById("amount_paid").value) || 0;
+    const pendingBalance = Math.max(0, finalAmount - amountPaid);
+
+    // Update displays
+    document.getElementById("subtotal").textContent = `₹${subtotal.toFixed(2)}`;
+    document.getElementById(
+      "product_discount_total"
+    ).textContent = `₹${productDiscountTotal.toFixed(2)}`;
+    document.getElementById(
+      "total_amount"
+    ).textContent = `₹${totalAmount.toFixed(2)}`;
+    document.getElementById(
+      "overall_discount_display"
+    ).textContent = `₹${overallDiscount.toFixed(2)}`;
+    document.getElementById(
+      "final_amount"
+    ).textContent = `₹${finalAmount.toFixed(2)}`;
+    document.getElementById(
+      "pending_balance"
+    ).value = `₹${pendingBalance.toFixed(2)}`;
+  }
+
+  // Event listeners
+  document
+    .getElementById("overall_discount")
+    .addEventListener("input", calculateTotals);
+  document
+    .getElementById("amount_paid")
+    .addEventListener("input", calculateTotals);
+
+  // Form validation
+  document
+    .getElementById("prebookingForm")
+    .addEventListener("submit", function (e) {
+      if (productRows.length === 0) {
+        e.preventDefault();
+        alert("Please add at least one product to the order");
+        return false;
+      }
+    });
+
+  // Initial render
+  renderProductRows();
 </script>
 {% endblock %}

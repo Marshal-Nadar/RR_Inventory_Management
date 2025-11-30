@@ -67,10 +67,12 @@
               <input type="number" step="0.01" class="form-control calc-input" id="ns_total" name="ns_total" value="0">
             </div>
             <div class="col-md-4">
-              <label for="outdoor_catering">Outdoor Catering</label>
-              <input type="number" step="0.01" class="form-control calc-input" id="outdoor_catering"
-                name="outdoor_catering" value="0">
-            </div>
+  <label for="outdoor_catering_display">Outdoor Catering (Pre-Booking Paid Today)</label>
+  <input type="number" step="0.01" class="form-control" id="outdoor_catering_display"
+         value="0" {% if user.role !='admin' %}disabled{% endif %}>
+  <!-- This hidden field is used in calculations & submitted -->
+  <input type="hidden" class="calc-input" name="outdoor_catering" id="outdoor_catering" value="0">
+</div>
           </div>
 
           <hr>
@@ -135,102 +137,96 @@
   </div>
 </div>
 
-<!-- Live Calculation Script -->
 <script>
+function updatePrebookingAndMisc() {
+  const branchId = document.getElementById('restaurant_id').value;
+  const reportDate = document.getElementById('report_date').value;
 
-  function updateMiscExpense() {
-    const branchId = document.getElementById('restaurant_id').value;
-    const reportDate = document.getElementById('report_date').value;
-
-    if (!branchId || !reportDate) {
-      document.getElementById('r_expense_display').value = 0;
-      document.getElementById('r_expense').value = 0;
-      calculateLive();
-      return;
-    }
-
-    fetch(`/fetch-misc-expense?restaurant_id=${branchId}&report_date=${reportDate}`)
-      .then(res => res.json())
-      .then(data => {
-        const miscValue = parseFloat(data.total_misc || 0).toFixed(2);
-        document.getElementById('r_expense_display').value = miscValue;
-        document.getElementById('r_expense').value = miscValue;
-        calculateLive();
-      })
-      .catch(err => {
-        console.error("Error fetching misc expense:", err);
-        document.getElementById('r_expense_display').value = 0;
-        document.getElementById('r_expense').value = 0;
-        calculateLive();
-      });
+  if (!branchId || !reportDate) {
+    document.getElementById('r_expense_display').value = 0;
+    document.getElementById('r_expense').value = 0;
+    document.getElementById('outdoor_catering_display').value = 0;
+    document.getElementById('outdoor_catering').value = 0;
+    calculateLive();
+    return;
   }
 
-  // Listen to changes
-  const restaurantDropdown = document.getElementById('restaurant_id');
-  const reportDateInput = document.getElementById('report_date');
+  // Fetch both in parallel
+  Promise.all([
+    fetch(`/fetch-misc-expense?restaurant_id=${branchId}&report_date=${reportDate}`).then(r => r.json()),
+    fetch(`/fetch-prebooking-paid-today?restaurant_id=${branchId}&report_date=${reportDate}`).then(r => r.json())
+  ])
+  .then(([miscData, prebookData]) => {
+    const misc = parseFloat(miscData.total_misc || 0).toFixed(2);
+    const prebook = parseFloat(prebookData.total_prebooking_paid || 0).toFixed(2);
 
-  if ('{{ user.role }}' === 'admin') {
-    restaurantDropdown.addEventListener('change', updateMiscExpense);
-    reportDateInput.addEventListener('change', updateMiscExpense);
-  }
+    document.getElementById('r_expense_display').value = misc;
+    document.getElementById('r_expense').value = misc;
 
-  // Initial fetch if prefilled
-  updateMiscExpense();
+    document.getElementById('outdoor_catering_display').value = prebook;
+    document.getElementById('outdoor_catering').value = prebook;
 
-  function parseNum(id) {
-    const el = document.getElementById(id);
-    if (!el) return 0;
-    return parseFloat(el.value) || 0;
-  }
-
-  function calculateLive() {
-    // Income
-    const petpooja = parseNum('petpooja_total');
-    const ns_total = parseNum('ns_total');
-    const outdoor = parseNum('outdoor_catering');
-
-    const total_income = petpooja + ns_total + outdoor;
-
-    // Online platforms
-    const swiggy = parseNum('swiggy');
-    const zomato = parseNum('zomato');
-
-    // NEW CALCULATION: Net Sales = total_income only (no swiggy/zomato)
-    const net_sales = total_income;
-
-    // Payment methods
-    const upi = parseNum('upi');
-    const cash = parseNum('cash');
-    const r_expense = parseNum('r_expense'); // hidden input
-
-    // NEW CALCULATION: Net Counter = upi + cash + misc_expense + swiggy + zomato
-    const net_counter = upi + cash + r_expense + swiggy + zomato;
-
-    // Signed difference (Net Counter - Net Sales)
-    const difference = net_counter - net_sales;
-
-    // Update UI (2 decimal places)
-    document.getElementById('net_sales').value = net_sales.toFixed(2);
-    document.getElementById('net_counter').value = net_counter.toFixed(2);
-    const diffEl = document.getElementById('difference');
-    diffEl.value = difference.toFixed(2);
-
-    // Color-code difference (green >=0, red <0)
-    diffEl.classList.remove('text-success', 'text-danger');
-    if (difference < 0) {
-      diffEl.classList.add('text-danger');
-    } else {
-      diffEl.classList.add('text-success');
-    }
-  }
-
-  // Wire all inputs that affect calculations
-  document.querySelectorAll('.calc-input').forEach(input => {
-    input.addEventListener('input', calculateLive);
+    calculateLive();
+  })
+  .catch(err => {
+    console.error("Error fetching data:", err);
+    // Reset on error
+    document.getElementById('r_expense_display').value = 0;
+    document.getElementById('r_expense').value = 0;
+    document.getElementById('outdoor_catering_display').value = 0;
+    document.getElementById('outdoor_catering').value = 0;
+    calculateLive();
   });
+}
 
-  // Initial run
-  calculateLive();
+// Listen to branch & date changes (only for admin)
+const restaurantDropdown = document.getElementById('restaurant_id');
+const reportDateInput = document.getElementById('report_date');
 
+if ('{{ user.role }}' === 'admin') {
+  restaurantDropdown.addEventListener('change', updatePrebookingAndMisc);
+  reportDateInput.addEventListener('change', updatePrebookingAndMisc);
+}
+
+// Initial load
+updatePrebookingAndMisc();
+
+function parseNum(id) {
+  const el = document.getElementById(id);
+  return el ? (parseFloat(el.value) || 0) : 0;
+}
+
+function calculateLive() {
+  const petpooja = parseNum('petpooja_total');
+  const ns_total = parseNum('ns_total');
+  const outdoor = parseNum('outdoor_catering');  // from pre-booking
+  const total_income = petpooja + ns_total + outdoor;
+
+  const swiggy = parseNum('swiggy');
+  const zomato = parseNum('zomato');
+  const upi = parseNum('upi');
+  const cash = parseNum('cash');
+  const r_expense = parseNum('r_expense');
+
+  const net_sales = total_income;
+  const net_counter = upi + cash + r_expense + swiggy + zomato;
+  const difference = net_counter - net_sales;
+
+  document.getElementById('net_sales').value = net_sales.toFixed(2);
+  document.getElementById('net_counter').value = net_counter.toFixed(2);
+
+  const diffEl = document.getElementById('difference');
+  diffEl.value = difference.toFixed(2);
+  diffEl.classList.remove('text-success', 'text-danger');
+  diffEl.classList.add(difference < 0 ? 'text-danger' : 'text-success');
+}
+
+// Recalculate on any manual input
+document.querySelectorAll('.calc-input').forEach(input => {
+  input.addEventListener('input', calculateLive);
+});
+
+// Initial calculation
+calculateLive();
 </script>
 {% endblock %}

@@ -55,27 +55,62 @@
 
             <h5 class="mt-4">Product Details</h5>
             <hr>
-            <table class="table table-bordered">
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Unit Price</th>
-                  <th>Quantity</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{{ order.product_name }}</td>
-                  <td>₹{{ "%.2f"|format(order.unit_price) }}</td>
-                  <td>{{ order.quantity }}</td>
-                  <td>₹{{ "%.2f"|format(order.total_amount) }}</td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="table-responsive">
+              <table class="table table-bordered">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Unit Price</th>
+                    <th>Quantity</th>
+                    <th>Product Discount</th>
+                    <th>Item Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in order_items %}
+                  <tr>
+                    <td>{{ item.product_name }}</td>
+                    <td>₹{{ "%.2f"|format(item.unit_price) }}</td>
+                    <td>{{ item.quantity }}</td>
+                    <td class="text-danger">-₹{{ "%.2f"|format(item.product_discount) }}</td>
+                    <td>₹{{ "%.2f"|format(item.item_total) }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="4" class="text-end"><strong>Subtotal:</strong></td>
+                    <td>₹{{ "%.2f"|format(order.subtotal) }}</td>
+                  </tr>
+                  {% if order.product_discount_total > 0 %}
+                  <tr>
+                    <td colspan="4" class="text-end"><strong>Product Discounts Total:</strong></td>
+                    <td class="text-danger">-₹{{ "%.2f"|format(order.product_discount_total) }}</td>
+                  </tr>
+                  {% endif %}
+                  <tr>
+                    <td colspan="4" class="text-end"><strong>Total Amount:</strong></td>
+                    <td>₹{{ "%.2f"|format(order.total_amount) }}</td>
+                  </tr>
+                  {% if order.overall_discount > 0 %}
+                  <tr>
+                    <td colspan="4" class="text-end"><strong>Overall Discount:</strong></td>
+                    <td class="text-danger">-₹{{ "%.2f"|format(order.overall_discount) }}</td>
+                  </tr>
+                  {% endif %}
+                  <tr class="table-success">
+                    <td colspan="4" class="text-end"><strong>Final Amount:</strong></td>
+                    <td><strong>₹{{ "%.2f"|format(order.final_amount) }}</strong></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
 
             <div class="mt-3">
               <a href="{{ url_for('prebooking_list') }}" class="btn btn-secondary">Back to List</a>
+              <button onclick="printPrebookingOrder()" class="btn btn-info">
+                <i class="fas fa-print"></i> Print Order
+              </button>
             </div>
           </div>
         </div>
@@ -88,8 +123,28 @@
             <h5>Payment Summary</h5>
             <hr>
             <div class="d-flex justify-content-between mb-2">
+              <strong>Subtotal:</strong>
+              <span>₹{{ "%.2f"|format(order.subtotal) }}</span>
+            </div>
+            {% if order.product_discount_total > 0 %}
+            <div class="d-flex justify-content-between mb-2">
+              <strong>Product Discounts:</strong>
+              <span class="text-danger">-₹{{ "%.2f"|format(order.product_discount_total) }}</span>
+            </div>
+            {% endif %}
+            <div class="d-flex justify-content-between mb-2">
               <strong>Total Amount:</strong>
               <span>₹{{ "%.2f"|format(order.total_amount) }}</span>
+            </div>
+            {% if order.overall_discount > 0 %}
+            <div class="d-flex justify-content-between mb-2">
+              <strong>Overall Discount:</strong>
+              <span class="text-danger">-₹{{ "%.2f"|format(order.overall_discount) }}</span>
+            </div>
+            {% endif %}
+            <div class="d-flex justify-content-between mb-2">
+              <strong>Final Amount:</strong>
+              <span class="text-success"><strong>₹{{ "%.2f"|format(order.final_amount) }}</strong></span>
             </div>
             <div class="d-flex justify-content-between mb-2">
               <strong>Amount Paid:</strong>
@@ -215,5 +270,342 @@
   .badge-ready { background-color: #20c997; }
   .badge-delivered { background-color: #6c757d; }
   .badge-cancelled { background-color: #dc3545; }
+  
+  @media print {
+    .page-header,
+    .btn,
+    .card:not(.print-card),
+    .modal,
+    .badge {
+      display: none !important;
+    }
+    .print-card {
+      display: block !important;
+      border: none !important;
+      box-shadow: none !important;
+    }
+    body {
+      font-size: 12px;
+      margin: 0;
+      padding: 10px;
+    }
+    table {
+      font-size: 11px;
+    }
+  }
 </style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function printPrebookingOrder() {
+    const currentUrl = window.location.href.split("?")[0];
+    const printContent = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Pre-Booking Order - {{ order.order_number }}</title>
+  <style>
+    @page {
+      margin: 1cm;
+      @top-right { 
+        content: "${new Date().toLocaleDateString("en-GB")}:${new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})}"; 
+        font-size: 10pt; 
+      }
+      @top-center { 
+        content: "SALEM RR BIRIYANI TIRUNELVELI"; 
+        font-size: 14pt; 
+        font-weight: bold; 
+      }
+      @bottom-left { 
+        content: "${currentUrl}"; 
+        font-size: 8pt; 
+      }
+      @bottom-right { 
+        content: "Page " counter(page) " of " counter(pages); 
+        font-size: 8pt; 
+      }
+    }
+    body { 
+      margin: 0; 
+      font-family: Arial, sans-serif; 
+      font-size: 12px;
+    }
+    .company-info { 
+      text-align: center; 
+      margin-bottom: 15px; 
+    }
+    .order-header { 
+      text-align: center; 
+      margin-bottom: 20px; 
+      border-bottom: 2px solid #000;
+      padding-bottom: 10px;
+    }
+    .order-details { 
+      margin-bottom: 20px; 
+    }
+    .detail-row { 
+      display: flex; 
+      justify-content: space-between; 
+      margin-bottom: 5px; 
+    }
+    .detail-section { 
+      margin-bottom: 15px; 
+    }
+    .detail-section h4 { 
+      margin: 0 0 8px 0; 
+      font-size: 14px; 
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 5px;
+    }
+    .products-table { 
+      width: 100%; 
+      border-collapse: collapse; 
+      margin-bottom: 15px;
+      font-size: 11px;
+    }
+    .products-table th, 
+    .products-table td { 
+      border: 1px solid #000; 
+      padding: 6px; 
+      text-align: left; 
+    }
+    .products-table th { 
+      background-color: #f8f9fa; 
+      font-weight: bold;
+    }
+    .products-table tfoot td { 
+      font-weight: bold; 
+      background-color: #f8f9fa;
+    }
+    .payment-summary { 
+      margin-top: 20px; 
+      border-top: 2px solid #000;
+      padding-top: 10px;
+    }
+    .summary-row { 
+      display: flex; 
+      justify-content: space-between; 
+      margin-bottom: 4px; 
+    }
+    .final-amount { 
+      font-weight: bold; 
+      font-size: 14px; 
+      border-top: 1px solid #000;
+      padding-top: 5px;
+      margin-top: 5px;
+    }
+    .text-danger { color: #dc3545; }
+    .text-success { color: #28a745; }
+    .text-center { text-align: center; }
+    .signatures { 
+      display: flex; 
+      justify-content: space-between; 
+      margin-top: 40px; 
+      padding-top: 20px;
+      border-top: 1px solid #000;
+    }
+    .signature-box { 
+      text-align: center; 
+      width: 45%; 
+    }
+  </style>
+</head>
+<body>
+  <div class="main-content">
+    <!-- Company Header -->
+    <div class="company-info">
+      <h3 style="margin: 0; font-size: 14px;">DHARANI GROUP OF COMPANY</h3>
+      <p style="margin: 5px 0; font-size: 12px;"><b>GST :</b> 33AAWFD7590A1Z9</p>
+      <p style="margin: 5px 0; font-size: 12px;">Pre-Booking Order Receipt</p>
+    </div>
+
+    <!-- Order Header -->
+    <div class="order-header">
+      <h3 style="margin: 0; font-size: 16px;">ORDER #{{ order.order_number }}</h3>
+      <p style="margin: 5px 0; font-size: 11px;">Generated on: {{ order.created_at.strftime('%d/%m/%Y %I:%M %p') }}</p>
+    </div>
+
+    <!-- Customer Details -->
+    <div class="detail-section">
+      <h4>CUSTOMER INFORMATION</h4>
+      <div class="detail-row">
+        <div style="width: 50%;">
+          <strong>Name:</strong> {{ order.username }}<br>
+          <strong>Mobile:</strong> {{ order.mobile_number }}<br>
+          <strong>Email:</strong> {{ order.email or 'N/A' }}
+        </div>
+        <div style="width: 50%;">
+          <strong>Branch:</strong> {{ order.restaurantname or 'N/A' }}<br>
+          <strong>Order Status:</strong> {{ order.order_status|upper }}<br>
+          <strong>Payment Status:</strong> {{ order.payment_status|upper }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Delivery Information -->
+    <div class="detail-section">
+      <h4>DELIVERY INFORMATION</h4>
+      <div class="detail-row">
+        <div style="width: 50%;">
+          <strong>Delivery Date:</strong> {{ order.delivery_date.strftime('%d/%m/%Y') }}<br>
+          <strong>Delivery Time:</strong> {% if order.delivery_time %}{{ (datetime.min + order.delivery_time).time().strftime('%I:%M %p') }}{% else %}N/A{% endif %}
+        </div>
+        <div style="width: 50%;">
+          <strong>Address:</strong><br>
+          {{ order.delivery_address|replace('\\n', '<br>')|safe }}
+        </div>
+      </div>
+    </div>
+
+    {% if order.notes %}
+    <div class="detail-section">
+      <h4>NOTES</h4>
+      <p style="margin: 0;">{{ order.notes }}</p>
+    </div>
+    {% endif %}
+
+    <!-- Product Details -->
+    <div class="detail-section">
+      <h4>ORDER ITEMS</h4>
+      <table class="products-table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Unit Price</th>
+            <th>Qty</th>
+            <th>Discount</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in order_items %}
+          <tr>
+            <td>{{ item.product_name }}</td>
+            <td>₹{{ "%.2f"|format(item.unit_price) }}</td>
+            <td>{{ item.quantity }}</td>
+            <td class="text-danger">-₹{{ "%.2f"|format(item.product_discount) }}</td>
+            <td>₹{{ "%.2f"|format(item.item_total) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="4" style="text-align: right;"><strong>Subtotal:</strong></td>
+            <td><strong>₹{{ "%.2f"|format(order.subtotal) }}</strong></td>
+          </tr>
+          {% if order.product_discount_total > 0 %}
+          <tr>
+            <td colspan="4" style="text-align: right;"><strong>Product Discounts Total:</strong></td>
+            <td class="text-danger"><strong>-₹{{ "%.2f"|format(order.product_discount_total) }}</strong></td>
+          </tr>
+          {% endif %}
+          <tr>
+            <td colspan="4" style="text-align: right;"><strong>Total Amount:</strong></td>
+            <td><strong>₹{{ "%.2f"|format(order.total_amount) }}</strong></td>
+          </tr>
+          {% if order.overall_discount > 0 %}
+          <tr>
+            <td colspan="4" style="text-align: right;"><strong>Overall Discount:</strong></td>
+            <td class="text-danger"><strong>-₹{{ "%.2f"|format(order.overall_discount) }}</strong></td>
+          </tr>
+          {% endif %}
+          <tr style="background-color: #e9ecef;">
+            <td colspan="4" style="text-align: right;"><strong>FINAL AMOUNT:</strong></td>
+            <td><strong>₹{{ "%.2f"|format(order.final_amount) }}</strong></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <!-- Payment Summary -->
+    <div class="payment-summary">
+      <h4>PAYMENT SUMMARY</h4>
+      <div class="summary-row">
+        <span>Final Amount:</span>
+        <span>₹{{ "%.2f"|format(order.final_amount) }}</span>
+      </div>
+      <div class="summary-row">
+        <span>Amount Paid:</span>
+        <span class="text-success">₹{{ "%.2f"|format(order.amount_paid) }}</span>
+      </div>
+      <div class="summary-row">
+        <span>Pending Balance:</span>
+        <span class="text-danger">₹{{ "%.2f"|format(order.pending_balance) }}</span>
+      </div>
+      <div class="final-amount summary-row">
+        <span><strong>BALANCE DUE:</strong></span>
+        <span><strong>₹{{ "%.2f"|format(order.pending_balance) }}</strong></span>
+      </div>
+    </div>
+
+    <!-- Payment History -->
+    {% if payments %}
+    <div class="detail-section">
+      <h4>PAYMENT HISTORY</h4>
+      <table class="products-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Amount</th>
+            <th>Method</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for payment in payments %}
+          <tr>
+            <td>{{ payment.payment_date.strftime('%d/%m/%y') }}</td>
+            <td>₹{{ "%.2f"|format(payment.amount) }}</td>
+            <td>{{ payment.payment_method|upper }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <!-- Signatures -->
+    <div class="signatures">
+      <div class="signature-box">
+        <p>Customer Signature</p>
+        <p>_________________________</p>
+      </div>
+      <div class="signature-box">
+        <p>Authorized Signature</p>
+        <p>_________________________</p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="text-align: center; margin-top: 20px; font-size: 10px; color: #666;">
+      <p>“More biryani. More smiles. More happiness.”</p>
+      <p>Thank you!</p>
+      <p>For queries, contact: {{ order.restaurantname or 'N/A' }}</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "absolute";
+    iframe.style.width = "0px";
+    iframe.style.height = "0px";
+    iframe.style.border = "none";
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(printContent);
+    doc.close();
+
+    iframe.contentWindow.focus();
+    setTimeout(() => {
+      iframe.contentWindow.document.title = "Pre-Booking Order - {{ order.order_number }}";
+      iframe.contentWindow.print();
+    }, 200);
+
+    setTimeout(() => {
+      document.body.removeChild(iframe);
+    }, 1000);
+  }
+</script>
 {% endblock %}

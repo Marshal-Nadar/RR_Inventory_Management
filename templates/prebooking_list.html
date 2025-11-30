@@ -25,30 +25,33 @@
 
     <!-- ==================== BRANCH SELECTOR (ADMIN ONLY) ==================== -->
     {% if user.role == 'admin' %}
-    <div class="card mb-3">
-      <div class="card-body py-2">
-        <form method="get" id="branchForm" class="row g-2 align-items-center">
-          <div class="col-auto">
-            <label class="form-label mb-0"><strong>Branch:</strong></label>
-          </div>
-          <div class="col-auto">
-            <select name="branch_id" class="form-select form-select-sm" onchange="document.getElementById('branchForm').submit()">
-              {% for b in branches %}
-              <option value="{{ b.id }}" {% if selected_branch == b.id|string %}selected{% endif %}>{{ b.restaurantname }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <!-- Preserve existing filters -->
-          <input type="hidden" name="search" value="{{ search }}">
-          <input type="hidden" name="status" value="{{ status_filter }}">
-          <input type="hidden" name="payment" value="{{ payment_filter }}">
-          <input type="hidden" name="start_date" value="{{ start_date }}">
-          <input type="hidden" name="end_date" value="{{ end_date }}">
-          <input type="hidden" name="page" value="1">
-        </form>
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="get" id="branchForm" class="row g-2 align-items-center">
+      <div class="col-auto">
+        <label class="form-label mb-0"><strong>Branch:</strong></label>
       </div>
-    </div>
-    {% endif %}
+      <div class="col-auto">
+        <select name="branch_id" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">All Branches</option>
+          {% for b in branches %}
+          <option value="{{ b.id }}" {% if selected_branch == b.id|string %}selected{% endif %}>
+            {{ b.restaurantname }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <!-- Preserve filters -->
+      <input type="hidden" name="search" value="{{ search }}">
+      <input type="hidden" name="status" value="{{ status_filter }}">
+      <input type="hidden" name="payment" value="{{ payment_filter }}">
+      <input type="hidden" name="start_date" value="{{ start_date }}">
+      <input type="hidden" name="end_date" value="{{ end_date }}">
+      <input type="hidden" name="page" value="1">
+    </form>
+  </div>
+</div>
+{% endif %}
 
     <!-- ==================== SUMMARY CARD ==================== -->
     <div class="row mb-3">
@@ -80,45 +83,66 @@
 
     <!-- ==================== FILTERS ==================== -->
     <div class="card">
-      <div class="card-body">
-        <form method="get" action="/prebooking-list" class="row g-3 mb-3">
-          <!-- Preserve branch if admin -->
-          {% if user.role == 'admin' and selected_branch %}
-          <input type="hidden" name="branch_id" value="{{ selected_branch }}">
-          {% endif %}
+  <div class="card-body">
+    <form method="get" action="/prebooking-list" class="row g-3 mb-3" id="filterForm">
+      <!-- Preserve branch if admin -->
+      {% if user.role == 'admin' and selected_branch %}
+      <input type="hidden" name="branch_id" value="{{ selected_branch }}">
+      {% endif %}
 
-          <div class="col-md-3">
-            <input type="text" class="form-control" name="search" placeholder="Search..." value="{{ search }}">
-          </div>
-          <div class="col-md-2">
-            <select class="form-control" name="status">
-              <option value="">All Statuses</option>
-              <option value="pending" {% if status_filter=='pending' %}selected{% endif %}>Pending</option>
-              <option value="confirmed" {% if status_filter=='confirmed' %}selected{% endif %}>Confirmed</option>
-              <option value="preparing" {% if status_filter=='preparing' %}selected{% endif %}>Preparing</option>
-              <option value="ready" {% if status_filter=='ready' %}selected{% endif %}>Ready</option>
-              <option value="delivered" {% if status_filter=='delivered' %}selected{% endif %}>Delivered</option>
-              <option value="cancelled" {% if status_filter=='cancelled' %}selected{% endif %}>Cancelled</option>
-            </select>
-          </div>
-          <div class="col-md-2">
-            <select class="form-control" name="payment">
-              <option value="">All Payments</option>
-              <option value="pending" {% if payment_filter=='pending' %}selected{% endif %}>Pending</option>
-              <option value="partial" {% if payment_filter=='partial' %}selected{% endif %}>Partial</option>
-              <option value="completed" {% if payment_filter=='completed' %}selected{% endif %}>Completed</option>
-            </select>
-          </div>
-          <div class="col-md-2">
-            <input type="date" class="form-control" name="start_date" value="{{ start_date }}">
-          </div>
-          <div class="col-md-2">
-            <input type="date" class="form-control" name="end_date" value="{{ end_date }}">
-          </div>
-          <div class="col-md-1">
-            <button type="submit" class="btn btn-primary w-100">Filter</button>
-          </div>
-        </form>
+      <div class="col-md-3">
+        <input type="text" class="form-control" name="search" placeholder="Search..." value="{{ search }}">
+      </div>
+
+      <div class="col-md-2">
+        <select class="form-control" name="status">
+          <option value="">All Statuses</option>
+          <option value="pending" {% if status_filter=='pending' %}selected{% endif %}>Pending</option>
+          <option value="confirmed" {% if status_filter=='confirmed' %}selected{% endif %}>Confirmed</option>
+          <option value="preparing" {% if status_filter=='preparing' %}selected{% endif %}>Preparing</option>
+          <option value="ready" {% if status_filter=='ready' %}selected{% endif %}>Ready</option>
+          <option value="delivered" {% if status_filter=='delivered' %}selected{% endif %}>Delivered</option>
+          <option value="cancelled" {% if status_filter=='cancelled' %}selected{% endif %}>Cancelled</option>
+        </select>
+      </div>
+
+      <div class="col-md-2">
+        <select class="form-control" name="payment">
+          <option value="">All Payments</option>
+          <option value="pending" {% if payment_filter=='pending' %}selected{% endif %}>Pending</option>
+          <option value="partial" {% if payment_filter=='partial' %}selected{% endif %}>Partial</option>
+          <option value="completed" {% if payment_filter=='completed' %}selected{% endif %}>Completed</option>
+        </select>
+      </div>
+
+      <!-- NEW: Product Filter -->
+      <div class="col-md-2">
+        <select class="form-control" name="product_id">
+          <option value="">All Products</option>
+          {% for p in products %}
+          <option value="{{ p.id }}" {% if selected_product == p.id|string %}selected{% endif %}>
+            {{ p.product_name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-1">
+        <input type="date" class="form-control" name="start_date" value="{{ start_date }}">
+      </div>
+      <div class="col-md-1">
+        <input type="date" class="form-control" name="end_date" value="{{ end_date }}">
+      </div>
+
+      <div class="col-md-1">
+        <button type="submit" class="btn btn-primary w-100">Filter</button>
+      </div>
+      <div class="col-md-1">
+        <button type="button" class="btn btn-outline-secondary w-100" onclick="resetFilters()">
+          Reset
+        </button>
+      </div>
+    </form>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -133,8 +157,8 @@
           <table class="table table-hover">
             <thead>
               <tr>
-                <th>Order #</th><th>Customer</th><th>Mobile</th><th>Product</th><th>Qty</th>
-                <th>Total</th><th>Paid</th><th>Pending</th><th>Delivery Date</th>
+                <th>Order #</th><th>Customer</th><th>Mobile</th><th>Products</th>
+                <th>Final Amount</th><th>Paid</th><th>Pending</th><th>Delivery Date</th>
                 <th>Payment</th><th>Status</th><th>Actions</th>
               </tr>
             </thead>
@@ -144,9 +168,20 @@
                 <td><strong>{{ order.order_number }}</strong></td>
                 <td>{{ order.username }}</td>
                 <td>{{ order.mobile_number }}</td>
-                <td>{{ order.product_name }}</td>
-                <td>{{ order.quantity }}</td>
-                <td>₹{{ "%.2f"|format(order.total_amount) }}</td>
+                <td>
+                  {% if order.product_names %}
+                    {% set products = order.product_names.split(',') %}
+                    {% for product in products[:2] %}
+                      <span class="badge bg-light text-dark mb-1">{{ product }}</span><br>
+                    {% endfor %}
+                    {% if products|length > 2 %}
+                      <small class="text-muted">+{{ products|length - 2 }} more</small>
+                    {% endif %}
+                  {% else %}
+                    <span class="text-muted">No products</span>
+                  {% endif %}
+                </td>
+                <td>₹{{ "%.2f"|format(order.final_amount) }}</td>
                 <td>₹{{ "%.2f"|format(order.amount_paid) }}</td>
                 <td>₹{{ "%.2f"|format(order.pending_balance) }}</td>
                 <td>
@@ -158,13 +193,24 @@
                 <td><span class="badge badge-{{ order.payment_status }}">{{ order.payment_status|upper }}</span></td>
                 <td><span class="badge badge-{{ order.order_status }}">{{ order.order_status|upper }}</span></td>
                 <td>
-                  <a href="/view-prebooking/{{ order.id }}" class="btn btn-sm btn-info">
-                    <i class="fas fa-eye"></i>
-                  </a>
-                </td>
+  <a href="/view-prebooking/{{ order.id }}" class="btn btn-sm btn-info" title="View">
+    <i class="fas fa-eye"></i>
+  </a>
+
+  {% if user.role == 'admin' %}
+  <a href="/edit-prebooking/{{ order.id }}" class="btn btn-sm btn-warning ms-1" title="Edit">
+    <i class="fas fa-edit"></i>
+  </a>
+
+  <button type="button" class="btn btn-sm btn-danger ms-1" title="Delete"
+          onclick="confirmDelete({{ order.id }}, '{{ order.order_number }}')">
+    <i class="fas fa-trash"></i>
+  </button>
+  {% endif %}
+</td>
               </tr>
               {% else %}
-              <tr><td colspan="12" class="text-center">No orders found</td></tr>
+              <tr><td colspan="11" class="text-center">No orders found</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -198,4 +244,27 @@
     </div>
   </div>
 </div>
+
+<script>
+function resetFilters() {
+  // Get the current URL without query parameters
+  const baseUrl = window.location.origin + window.location.pathname;
+  
+  // Redirect to the base URL (without any filters)
+  window.location.href = baseUrl;
+}
+
+{% if user.role == 'admin' %}
+function confirmDelete(orderId, orderNumber) {
+  if (confirm(`Are you sure you want to delete Order #${orderNumber}?\nThis action cannot be undone.`)) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `/delete-prebooking/${orderId}`;
+    document.body.appendChild(form);
+    form.submit();
+  }
+}
+{% endif %}
+</script>
+
 {% endblock %}
