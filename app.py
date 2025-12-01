@@ -4908,111 +4908,125 @@ def prebooking_list():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # ---------- 1. BRANCH SELECTION (admin only) ----------
+    # ========== 1. BRANCH & FILTER SETUP ==========
     branch_id = request.args.get("branch_id")
     branches = []
     if role == 'admin':
         cursor.execute("SELECT id, restaurantname FROM restaurant ORDER BY restaurantname")
         branches = cursor.fetchall()
 
-    # ---------- 2. Pagination ----------
     per_page = 10
     page = int(request.args.get("page", 1))
     offset = (page - 1) * per_page
-    
-    # ---------- 3. Filters ----------
+
     search = request.args.get("search", "")
     status_filter = request.args.get("status", "")
     payment_filter = request.args.get("payment", "")
     start_date = request.args.get("start_date", "")
     end_date = request.args.get("end_date", "")
-    product_filter = request.args.get("product_id", "")  # NEW: Product filter
+    product_filter = request.args.get("product_id", "")
 
-    # Fetch all active products for dropdown
+    # Products dropdown
     cursor.execute("SELECT id, product_name FROM prebooking_products WHERE status='active' ORDER BY product_name")
     products = cursor.fetchall()
 
-    # ---------- 4. Base query ----------
-    base_query = """
-        FROM prebooking_orders po
-        LEFT JOIN restaurant r ON po.restaurant_id = r.id
-        LEFT JOIN prebooking_order_items poi ON po.id = poi.prebooking_order_id
-        WHERE po.is_deleted = 0
-    """
+    # ========== 2. BUILD WHERE CLAUSE ==========
+    where = ["po.is_deleted = 0"]
     params = []
-    
-    # Role + Branch filter
+
+    # Branch filter
     if role == 'branch_manager':
         email_to_restaurant = {
             "bmktcnagar@gmail.com": 1,
             "bmnewbs@gmail.com": 2,
             "dharanistorekeeper@gmail.com": 4
         }
-        restaurant_id = email_to_restaurant.get(email)
-        if restaurant_id:
-            base_query += " AND po.restaurant_id = %s"
-            params.append(restaurant_id)
+        rid = email_to_restaurant.get(email)
+        if rid:
+            where.append("po.restaurant_id = %s")
+            params.append(rid)
     elif role == 'admin' and branch_id:
-        base_query += " AND po.restaurant_id = %s"
+        where.append("po.restaurant_id = %s")
         params.append(branch_id)
 
-    # Search filter
     if search:
-        base_query += " AND (po.order_number LIKE %s OR po.username LIKE %s OR po.mobile_number LIKE %s)"
+        where.append("(po.order_number LIKE %s OR po.username LIKE %s OR po.mobile_number LIKE %s)")
         s = f"%{search}%"
         params.extend([s, s, s])
-
-    # Other filters
     if status_filter:
-        base_query += " AND po.order_status = %s"
+        where.append("po.order_status = %s")
         params.append(status_filter)
     if payment_filter:
-        base_query += " AND po.payment_status = %s"
+        where.append("po.payment_status = %s")
         params.append(payment_filter)
     if start_date and end_date:
-        base_query += " AND po.delivery_date BETWEEN %s AND %s"
+        where.append("po.delivery_date BETWEEN %s AND %s")
         params.extend([start_date, end_date])
     elif start_date:
-        base_query += " AND po.delivery_date >= %s"
+        where.append("po.delivery_date >= %s")
         params.append(start_date)
     elif end_date:
-        base_query += " AND po.delivery_date <= %s"
+        where.append("po.delivery_date <= %s")
         params.append(end_date)
-
-    # NEW: Product Filter - Match any item in order
     if product_filter:
-        base_query += " AND poi.product_id = %s"
+        where.append("EXISTS (SELECT 1 FROM prebooking_order_items poi WHERE poi.prebooking_order_id = po.id AND poi.product_id = %s)")
         params.append(product_filter)
 
-    # ---------- 5. Summary totals ----------
+    where_clause = " AND ".join(where)
+
+    # ========== 3. CORRECT SUMMARY (Safe + Compatible) ==========
     summary_query = f"""
         SELECT 
-            COALESCE(SUM(po.final_amount), 0)        AS total_prebooked,
-            COALESCE(SUM(po.amount_paid), 0)         AS total_paid,
-            COALESCE(SUM(po.pending_balance), 0)     AS total_pending
-        {base_query}
+            COALESCE(SUM(po.final_amount), 0) AS total_prebooked,
+            COALESCE(SUM(paid.paid_amount), 0) AS total_paid
+        FROM prebooking_orders po
+        LEFT JOIN (
+            SELECT order_id, SUM(amount) AS paid_amount
+            FROM prebooking_payments
+            GROUP BY order_id
+        ) paid ON paid.order_id = po.id
+        WHERE {where_clause}
     """
     cursor.execute(summary_query, params)
-    summary = cursor.fetchone()
+    raw_summary = cursor.fetchone()
 
-    # ---------- 6. Total rows ----------
-    count_query = f"SELECT COUNT(DISTINCT po.id) as total {base_query}"
+    total_prebooked = float(raw_summary['total_prebooked'])
+    total_paid = float(raw_summary['total_paid'])
+    total_pending = max(0.0, total_prebooked - total_paid)
+
+    summary = {
+        'total_prebooked': total_prebooked,
+        'total_paid': total_paid,
+        'total_pending': total_pending
+    }
+
+    # ========== 4. TOTAL COUNT ==========
+    count_query = f"SELECT COUNT(*) AS total FROM prebooking_orders po WHERE {where_clause}"
     cursor.execute(count_query, params)
-    total_records = cursor.fetchone()["total"]
+    total_records = cursor.fetchone()['total']
     total_pages = (total_records + per_page - 1) // per_page
 
-    # ---------- 7. Fetch orders with DISTINCT to avoid duplicates ----------
+    # ========== 5. FETCH ORDERS WITH REAL PAID AMOUNT ==========
     orders_query = f"""
-        SELECT DISTINCT po.*, r.restaurantname
-        {base_query}
-        GROUP BY po.id
-        ORDER BY po.created_at DESC
+        SELECT 
+            po.*,
+            r.restaurantname,
+            COALESCE(paid.paid_amount, 0) AS actual_paid_amount
+        FROM prebooking_orders po
+        LEFT JOIN restaurant r ON po.restaurant_id = r.id
+        LEFT JOIN (
+            SELECT order_id, SUM(amount) AS paid_amount
+            FROM prebooking_payments
+            GROUP BY order_id
+        ) paid ON paid.order_id = po.id
+        WHERE {where_clause}
+        ORDER BY po.created_at DESC        -- ← FIXED: was 'created_now'
         LIMIT %s OFFSET %s
     """
     cursor.execute(orders_query, (*params, per_page, offset))
     orders = cursor.fetchall()
 
-    # Attach product names to each order
+    # ========== 6. ATTACH PRODUCTS + CORRECT PAID/PENDING ==========
     for order in orders:
         cursor.execute("""
             SELECT product_name, quantity 
@@ -5020,8 +5034,15 @@ def prebooking_list():
             WHERE prebooking_order_id = %s
         """, (order['id'],))
         items = cursor.fetchall()
-        product_names = [f"{item['product_name']} ({item['quantity']})" for item in items] if items else ["No products"]
-        order['product_names'] = ", ".join(product_names)
+        product_list = [f"{i['product_name']} ({i['quantity']})" for i in items] if items else ["No products"]
+        order['product_names'] = ", ".join(product_list)
+
+        # Safe Decimal → float conversion
+        final_amount = float(order['final_amount'] or 0)
+        paid = float(order['actual_paid_amount'] or 0)
+
+        order['amount_paid'] = paid
+        order['pending_balance'] = max(0.0, final_amount - paid)
 
     cursor.close()
     conn.close()
@@ -5032,9 +5053,9 @@ def prebooking_list():
         orders=orders,
         summary=summary,
         branches=branches,
-        products=products,                    # Pass products to template
+        products=products,
         selected_branch=branch_id or "",
-        selected_product=product_filter or "", # Preserve selected product
+        selected_product=product_filter or "",
         page=page,
         total_pages=total_pages,
         search=search,
@@ -5431,6 +5452,121 @@ def get_product_price(product_id):
     if product:
         return jsonify({'price': float(product['price'])})
     return jsonify({'price': 0})
+
+@app.route('/product-wise-prebooking')
+def product_wise_prebooking():
+    if "user" not in session:
+        return redirect("/login")
+
+    user = session["user"]
+    role = user["role"]
+    email = user.get("email")
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # === GET FILTERS ===
+    product_id = request.args.get("product_id", "")
+    branch_id  = request.args.get("branch_id", "")
+    from_date  = request.args.get("from_date", "")
+    to_date    = request.args.get("to_date", "")
+
+    # Products dropdown
+    cursor.execute("SELECT id, product_name FROM prebooking_products WHERE status = 'active' ORDER BY product_name")
+    products = cursor.fetchall()
+
+    # Branches (admin only)
+    branches = []
+    if role == 'admin':
+        cursor.execute("SELECT id, restaurantname FROM restaurant ORDER BY restaurantname")
+        branches = cursor.fetchall()
+
+    # Default values when no product selected
+    items       = []
+    total_qty   = 0
+    total_value = 0.0
+
+    # Only run query if a product is selected
+    if product_id:
+        where  = ["poi.product_id = %s", "po.is_deleted = 0"]
+        params = [product_id]
+
+        # Branch filter
+        if role == 'branch_manager':
+            email_to_restaurant = {
+                "bmktcnagar@gmail.com": 1,
+                "bmnewbs@gmail.com": 2,
+                "dharanistorekeeper@gmail.com": 4
+            }
+            rid = email_to_restaurant.get(email)
+            if rid:
+                where.append("po.restaurant_id = %s")
+                params.append(rid)
+        elif role == 'admin' and branch_id:
+            where.append("po.restaurant_id = %s")
+            params.append(branch_id)
+
+        # Date range filter
+        if from_date:
+            where.append("po.delivery_date >= %s")
+            params.append(from_date)
+        if to_date:
+            where.append("po.delivery_date <= %s")
+            params.append(to_date)
+
+        where_clause = " AND ".join(where)
+
+        query = f"""
+            SELECT 
+                po.id AS order_id,
+                po.order_number,
+                po.username,
+                po.mobile_number,
+                po.delivery_date,
+                r.restaurantname,
+                poi.product_name,
+                poi.quantity,
+                poi.unit_price,
+                poi.product_discount,
+                poi.item_total,
+                po.final_amount,
+                po.payment_status,
+                COALESCE(paid.paid_amount, 0) AS actual_paid
+            FROM prebooking_order_items poi
+            JOIN prebooking_orders po ON poi.prebooking_order_id = po.id
+            JOIN restaurant r ON po.restaurant_id = r.id
+            LEFT JOIN (
+                SELECT order_id, SUM(amount) AS paid_amount
+                FROM prebooking_payments
+                GROUP BY order_id
+            ) paid ON paid.order_id = po.id
+            WHERE {where_clause}
+            ORDER BY po.delivery_date DESC, po.created_at DESC
+        """
+
+        cursor.execute(query, params)
+        items = cursor.fetchall()
+
+        # Correct sum calculations
+        total_qty   = sum(item['quantity'] or 0 for item in items)
+        total_value = sum(float(item['item_total'] or 0) for item in items)
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "product_wise_prebooking.html",
+        items=items,
+        products=products,
+        selected_product=product_id,
+        selected_branch=branch_id or "",
+        from_date=from_date,
+        to_date=to_date,
+        branches=branches,
+        total_qty=total_qty,
+        total_value=total_value,
+        user=user
+    )
 
 if __name__ == "__main__":
     app.run()

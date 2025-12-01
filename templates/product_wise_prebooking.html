@@ -1,0 +1,148 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="page-wrapper">
+  <div class="content">
+    <div class="page-header d-flex justify-content-between align-items-center mb-4">
+      <h4 class="mb-0">Product-Wise Pre-Booking Report</h4>
+    </div>
+
+    <!-- Filters Card -->
+    <div class="card mb-4 shadow-sm">
+      <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+          <!-- Branch (Admin Only) -->
+          {% if user.role == 'admin' %}
+          <div class="col-md-3">
+            <label class="form-label">Branch</label>
+            <select name="branch_id" class="form-select">
+              <option value="">All Branches</option>
+              {% for b in branches %}
+              <option value="{{ b.id }}" {% if selected_branch == b.id|string %}selected{% endif %}>
+                {{ b.restaurantname }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endif %}
+
+          <!-- Product -->
+          <div class="col-md-4">
+            <label class="form-label"><strong>Product <span class="text-danger">*</span></strong></label>
+            <select name="product_id" class="form-select" required>
+              <option value="">-- Select Product --</option>
+              {% for p in products %}
+              <option value="{{ p.id }}" {% if selected_product == p.id|string %}selected{% endif %}>
+                {{ p.product_name }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Date Range -->
+          <div class="col-md-2">
+            <label class="form-label">From Date</label>
+            <input type="date" name="from_date" class="form-control" value="{{ from_date }}">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">To Date</label>
+            <input type="date" name="to_date" class="form-control" value="{{ to_date }}">
+          </div>
+
+          <!-- Buttons -->
+          <div class="col-md-1">
+            <button type="submit" class="btn btn-primary w-100">Filter</button>
+          </div>
+          <div class="col-md-1">
+            <a href="{{ url_for('product_wise_prebooking') }}" class="btn btn-outline-danger w-100">Clear</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Summary -->
+    {% if items %}
+    <div class="row mb-4">
+      <div class="col-md-6">
+        <div class="card border-primary shadow-sm">
+          <div class="card-body text-center">
+            <h5 class="text-muted mb-1">Total Quantity</h5>
+            <h2 class="text-primary mb-0">{{ total_qty }}</h2>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card border-success shadow-sm">
+          <div class="card-body text-center">
+            <h5 class="text-muted mb-1">Total Value</h5>
+            <h2 class="text-success mb-0">₹{{ "%.2f"|format(total_value) }}</h2>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Results Table -->
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        {% if items %}
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead style="background-color: #c8c8c8; color: white;">
+              <tr>
+                <th>Order #</th>
+                <th>Customer</th>
+                <th>Mobile</th>
+                <th>Branch</th>
+                <th>Delivery Date</th>
+                <th>Product</th>
+                <th>Qty</th>
+                <th>Unit Price</th>
+                <th>Disc</th>
+                <th>Item Total</th>
+                <th>Order Total</th>
+                <th>Paid</th>
+                <th>Payment Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in items %}
+              <tr>
+                <td>
+                  <a href="{{ url_for('view_prebooking', order_id=item.order_id) }}" class="text-decoration-none">
+                    <strong>{{ item.order_number }}</strong>
+                  </a>
+                </td>
+                <td>{{ item.username or '-' }}</td>
+                <td>{{ item.mobile_number or '-' }}</td>
+                <td>{{ item.restaurantname }}</td>
+                <td>{{ item.delivery_date.strftime('%d/%m/%y') }}</td>
+                <td><strong>{{ item.product_name }}</strong></td>
+                <td><span class="badge bg-primary fs-6">{{ item.quantity }}</span></td>
+                <td>₹{{ "%.2f"|format(item.unit_price or 0) }}</td>
+                <td>₹{{ "%.2f"|format(item.product_discount or 0) }}</td>
+                <td><strong>₹{{ "%.2f"|format(item.item_total or 0) }}</strong></td>
+                <td>₹{{ "%.2f"|format(item.final_amount or 0) }}</td>
+                <td><strong class="text-success">₹{{ "%.2f"|format(item.actual_paid) }}</strong></td>
+                <td>
+                  <span class="badge bg-{{ 'success' if item.payment_status=='completed' else 'warning' if item.payment_status=='partial' else 'danger' }}">
+                    {{ item.payment_status|upper }}
+                  </span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+          <i class="fas fa-search fa-3x text-muted mb-3"></i>
+          <h5 class="text-muted">No orders found!</h5>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

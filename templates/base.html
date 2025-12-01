@@ -125,6 +125,14 @@
                     </a>
                   </li>
                   <li>
+                    <a
+                      href="/product-wise-prebooking"
+                      class="{{ 'active' if request.path == '/product-wise-prebooking' else '' }}"
+                    >
+                      Menu-Wise Filter
+                    </a>
+                  </li>
+                  <li>
                     <a href="{{ url_for('prebooking_products_list') }}">
                       Add Products
                     </a>
