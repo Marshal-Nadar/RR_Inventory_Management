@@ -1,10 +1,33 @@
 {% extends 'base.html' %} {% block content %}
+
 <style>
+  .nbs-report table {
+    border: 2px solid #000;
+    width: 100%;
+    margin-top: 20px;
+  }
+  .nbs-report td {
+    padding: 10px;
+    border: 1px solid #000 !important;
+    font-size: 14px;
+    text-align: center;
+  }
   .negative-value {
     color: #dc3545;
+    font-weight: bold;
   }
   .positive-value {
     color: #28a745;
+    font-weight: bold;
+  }
+  @media print {
+    .page-header,
+    .btn {
+      display: none !important;
+    }
+    body {
+      padding: 10px;
+    }
   }
 </style>
 
@@ -21,15 +44,15 @@
     <div class="card">
       <div class="card-body">
         <div class="nbs-report">
-          <!-- Header Info -->
-          <table class="table table-bordered" style="width: 100%">
+          <!-- Header -->
+          <table class="table table-bordered">
             <tr>
-              <td style="width: 20%; border: none"></td>
-              <td style="width: 20%; border: none">DATE:</td>
-              <td style="width: 30%; border: none">
+              <td style="border: none; width: 20%"></td>
+              <td style="border: none">DATE:</td>
+              <td style="border: none">
                 <strong>{{ report.report_date.strftime('%d/%m/%y') }}</strong>
               </td>
-              <td style="width: 30%; border: none"></td>
+              <td style="border: none"></td>
             </tr>
             <tr>
               <td style="border: none"></td>
@@ -41,12 +64,8 @@
             </tr>
           </table>
 
-          <!-- Main Report Table -->
-          <table
-            class="table table-bordered"
-            style="width: 100%; margin-top: 20px"
-          >
-            <!-- Row 1 -->
+          <!-- Main Table - EXACT SAME AS YOUR IMAGE -->
+          <table class="table table-bordered">
             <tr>
               <td style="width: 25%"><strong>PETPOOJA</strong></td>
               <td style="width: 25%">
@@ -55,16 +74,12 @@
               <td style="width: 25%"><strong>UPI</strong></td>
               <td style="width: 25%">{{ "%.2f"|format(report.upi) }}</td>
             </tr>
-
-            <!-- Row 2 -->
             <tr>
               <td><strong>NS</strong></td>
               <td>{{ "%.2f"|format(report.ns_total) }}</td>
               <td><strong>CASH</strong></td>
               <td>{{ "%.2f"|format(report.cash) }}</td>
             </tr>
-
-            <!-- Row 3 → These two cells will be updated by JS -->
             <tr>
               <td><strong>OUTDOOR CATERING</strong></td>
               <td id="outdoor-cell">
@@ -73,139 +88,137 @@
               <td><strong>Miscellaneous Expense</strong></td>
               <td id="misc-cell">{{ "%.2f"|format(report.r_expense) }}</td>
             </tr>
-
-            <!-- Row 4: Swiggy -->
             <tr>
-              <td></td>
-              <td></td>
+              <td colspan="2"></td>
               <td><strong>SWIGGY</strong></td>
               <td>{{ "%.2f"|format(report.swiggy) }}</td>
             </tr>
-
-            <!-- Row 5: Zomato -->
             <tr>
-              <td></td>
-              <td></td>
+              <td colspan="2"></td>
               <td><strong>ZOMATO</strong></td>
               <td>{{ "%.2f"|format(report.zomato) }}</td>
             </tr>
-
-            <!-- Row 6: NET COUNTER -->
             <tr>
-              <td></td>
-              <td></td>
+              <td colspan="2"></td>
               <td><strong>NET COUNTER</strong></td>
-              <td><strong>{{ "%.2f"|format(report.net_counter) }}</strong></td>
+              <td id="net-counter-main">
+                <strong>{{ "%.2f"|format(report.net_counter) }}</strong>
+              </td>
             </tr>
-
-            <!-- Row 8: NET SALES -->
             <tr>
               <td><strong>NET SALES</strong></td>
-              <td><strong>{{ "%.2f"|format(report.net_petpooja) }}</strong></td>
-              <td></td>
-              <td></td>
+              <td id="net-sales-main">
+                <strong>{{ "%.2f"|format(report.net_petpooja) }}</strong>
+              </td>
+              <td colspan="2"></td>
             </tr>
           </table>
 
-          <!-- Summary Table -->
-          <table
-            class="table table-bordered"
-            style="width: 100%; margin-top: 20px"
-          >
+          <!-- Bottom Summary Table -->
+          <table class="table table-bordered">
             <tr>
               <td style="width: 50%"><strong>NET COUNTER</strong></td>
-              <td style="width: 50%">
+              <td id="summary-counter">
                 {{ "%.2f"|format(report.net_counter) }}
               </td>
             </tr>
             <tr>
               <td><strong>NET SALES</strong></td>
-              <td>{{ "%.2f"|format(report.net_petpooja) }}</td>
+              <td id="summary-sales">
+                {{ "%.2f"|format(report.net_petpooja) }}
+              </td>
             </tr>
             <tr>
               <td><strong>DIFFERENCE</strong></td>
-              <td>
-                <strong
-                  class="{% if report.difference < 0 %}negative-value{% else %}positive-value{% endif %}"
+              <td id="summary-difference">
+                <strong class="negative-value"
+                  >{{ "%.2f"|format(report.difference) }}</strong
                 >
-                  {{ "%.2f"|format(report.difference) }}
-                </strong>
               </td>
             </tr>
           </table>
-        </div>
 
-        <!-- Action Buttons -->
-        <div class="mt-4">
-          <a href="{{ url_for('nbs_reports') }}" class="btn btn-secondary"
-            >Back to List</a
-          >
-          {% if user.role == 'admin' %}
-          <a href="/edit-nbs-report/{{ report.id }}" class="btn btn-primary"
-            >Edit Report</a
-          >
-          {% endif %}
-          <button onclick="printNBSReport()" class="btn btn-info">
-            Print Report
-          </button>
+          <div class="mt-4">
+            <a href="{{ url_for('nbs_reports') }}" class="btn btn-secondary"
+              >Back to List</a
+            >
+            {% if user.role == 'admin' %}
+            <a href="/edit-nbs-report/{{ report.id }}" class="btn btn-primary"
+              >Edit Report</a
+            >
+            {% endif %}
+            <button onclick="printNBSReport()" class="btn btn-info">
+              Print Report
+            </button>
+          </div>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Styling (unchanged) -->
-<style>
-  .nbs-report table {
-    border: 2px solid #000;
-  }
-  .nbs-report td {
-    padding: 10px;
-    border: 1px solid #000 !important;
-    font-size: 14px;
-  }
-  @media print {
-    .page-header,
-    .btn {
-      display: none !important;
-    }
-    .nbs-report {
-      font-size: 12px;
-    }
-  }
-</style>
 {% endblock %} {% block scripts %}
 <script>
-  // Step 1: Silently fetch real-time values and update the two cells
-  document.addEventListener("DOMContentLoaded", () => {
-    const branchId = {{ report.restaurant_id }};
-    const dateStr = "{{ report.report_date.strftime('%Y-%m-%d') }}";
+  const data = {
+    petpooja: {{ report.petpooja_total|default(0) }},
+    ns: {{ report.ns_total|default(0) }},
+    upi: {{ report.upi|default(0) }},
+    cash: {{ report.cash|default(0) }},
+    swiggy: {{ report.swiggy|default(0) }},
+    zomato: {{ report.zomato|default(0) }},
+    rid: {{ report.restaurant_id }},
+    date: "{{ report.report_date.strftime('%Y-%m-%d') }}"
+  };
 
-    Promise.all([
-      fetch(`/fetch-prebooking-paid-today?restaurant_id=${branchId}&report_date=${dateStr}`).then(r => r.json()),
-      fetch(`/fetch-misc-expense?restaurant_id=${branchId}&report_date=${dateStr}`).then(r => r.json())
-    ])
-    .then(([prebook, misc]) => {
-      const prebookAmt = parseFloat(prebook.total_prebooking_paid || 0).toFixed(2);
-      const miscAmt    = parseFloat(misc.total_misc || 0).toFixed(2);
+  let liveValues = null;
 
-      const outdoorCell = document.getElementById('outdoor-cell');
-      const miscCell    = document.getElementById('misc-cell');
+  async function loadLiveData() {
+    try {
+      const [miscRes, prebookRes] = await Promise.all([
+        fetch(`/fetch-misc-expense?restaurant_id=${data.rid}&report_date=${data.date}`),
+        fetch(`/fetch-prebooking-paid-today?restaurant_id=${data.rid}&report_date=${data.date}`)
+      ]);
+      const misc = await miscRes.json();
+      const prebook = await prebookRes.json();
 
-      if (outdoorCell) outdoorCell.textContent = prebookAmt;
-      if (miscCell)    miscCell.textContent = miscAmt;
-    })
-    .catch(() => {
-      // Silent fallback – keep original values if fetch fails
-    });
-  });
+      const outdoor = parseFloat(prebook.total_prebooking_paid || 0);
+      const miscExp = parseFloat(misc.total_misc || 0);
+      const netSales = data.petpooja + data.ns + outdoor;
+      const netCounter = data.upi + data.cash + miscExp + data.swiggy + data.zomato;
+      const difference = netCounter - netSales;
 
-  // Step 2: Print function – 100% working, uses real-time values
+      liveValues = { outdoor, miscExp, netSales, netCounter, difference };
+
+      // Update screen too
+      document.getElementById('outdoor-cell').textContent = outdoor.toFixed(2);
+      document.getElementById('misc-cell').textContent = miscExp.toFixed(2);
+      document.getElementById('net-counter-main').textContent = netCounter.toFixed(2);
+      document.getElementById('net-sales-main').textContent = netSales.toFixed(2);
+      document.getElementById('summary-counter').textContent = netCounter.toFixed(2);
+      document.getElementById('summary-sales').textContent = netSales.toFixed(2);
+
+      const diffEl = document.getElementById('summary-difference').querySelector('strong');
+      diffEl.textContent = difference.toFixed(2);
+      diffEl.className = difference < 0 ? 'negative-value' : 'positive-value';
+
+    } catch (e) {
+      console.log("Live data failed, will use screen values on print");
+    }
+  }
+
+  loadLiveData();
+
   function printNBSReport() {
-    const outdoorValue = document.getElementById('outdoor-cell').textContent.trim();
-    const miscValue    = document.getElementById('misc-cell').textContent.trim();
+    // Wait a moment for live data
+    setTimeout(() => {
+      const outdoorValue = liveValues?.outdoor?.toFixed(2) || document.getElementById('outdoor-cell').textContent.trim();
+      const miscValue    = liveValues?.miscExp?.toFixed(2) || document.getElementById('misc-cell').textContent.trim();
+      const netCounter   = liveValues?.netCounter?.toFixed(2) || document.getElementById('net-counter-main').textContent.trim();
+      const netSales     = liveValues?.netSales?.toFixed(2) || document.getElementById('net-sales-main').textContent.trim();
+      const difference   = liveValues?.difference?.toFixed(2) ||
+                          (parseFloat(netCounter) - parseFloat(netSales)).toFixed(2);
 
-    const printContent = `<!DOCTYPE html>
+      const printContent = `<!DOCTYPE html>
   <html>
   <head>
     <meta charset="utf-8">
@@ -245,15 +258,15 @@
     <table>
       <tr>
         <td class="bold">PETPOOJA</td>
-        <td>{{ "%.2f"|format(report.petpooja_total) }}</td>
+        <td>${data.petpooja.toFixed(2)}</td>
         <td class="bold">UPI</td>
-        <td>{{ "%.2f"|format(report.upi) }}</td>
+        <td>${data.upi.toFixed(2)}</td>
       </tr>
       <tr>
         <td class="bold">NS</td>
-        <td>{{ "%.2f"|format(report.ns_total) }}</td>
+        <td>${data.ns.toFixed(2)}</td>
         <td class="bold">CASH</td>
-        <td>{{ "%.2f"|format(report.cash) }}</td>
+        <td>${data.cash.toFixed(2)}</td>
       </tr>
       <tr>
         <td class="bold">OUTDOOR CATERING</td>
@@ -265,23 +278,23 @@
         <td></td>
         <td></td>
         <td class="bold">SWIGGY</td>
-        <td>{{ "%.2f"|format(report.swiggy) }}</td>
+        <td>${data.swiggy.toFixed(2)}</td>
       </tr>
       <tr>
         <td></td>
         <td></td>
         <td class="bold">ZOMATO</td>
-        <td>{{ "%.2f"|format(report.zomato) }}</td>
+        <td>${data.zomato.toFixed(2)}</td>
       </tr>
       <tr>
         <td></td>
         <td></td>
         <td class="bold">NET COUNTER</td>
-        <td class="bold">{{ "%.2f"|format(report.net_counter) }}</td>
+        <td class="bold">${netCounter}</td>
       </tr>
       <tr>
         <td class="bold">NET SALES</td>
-        <td class="bold">{{ "%.2f"|format(report.net_petpooja) }}</td>
+        <td class="bold">${netSales}</td>
         <td></td>
         <td></td>
       </tr>
@@ -290,15 +303,15 @@
     <table>
       <tr>
         <td style="width:50%" class="bold">NET COUNTER</td>
-        <td>{{ "%.2f"|format(report.net_counter) }}</td>
+        <td>${netCounter}</td>
       </tr>
       <tr>
         <td class="bold">NET SALES</td>
-        <td>{{ "%.2f"|format(report.net_petpooja) }}</td>
+        <td>${netSales}</td>
       </tr>
       <tr>
         <td class="bold">DIFFERENCE</td>
-        <td class="bold">{{ "%.2f"|format(report.difference) }}</td>
+        <td class="bold" style="color: ${parseFloat(difference) < 0 ? 'red' : 'green'}">${difference}</td>
       </tr>
     </table>
 
@@ -309,14 +322,15 @@
   </body>
   </html>`;
 
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 500);
+      const printWindow = window.open('', '_blank', 'width=800,height=600');
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+    }, 800);
   }
 </script>
 {% endblock %}
