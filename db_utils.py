@@ -1448,7 +1448,7 @@ def delete_rawmaterial_from_db(rawmaterial_id):
     return execute_query(query, (rawmaterial_id,))
 
 
-def get_cumulative_purchase_record_invoice_wise(date):
+def get_cumulative_purchase_record_invoice_wise_range(from_date, to_date):
     query = """
     SELECT
         ph.invoice_number,
@@ -1457,7 +1457,7 @@ def get_cumulative_purchase_record_invoice_wise(date):
         ph.storageroom_id,
         sr.storageroomname AS storageroom_name,
         SUM(ph.total_cost) AS total_purchase_amount,
-        ph.purchase_date as purchase_date
+        ph.purchase_date
     FROM
         purchase_history ph
     JOIN
@@ -1465,15 +1465,14 @@ def get_cumulative_purchase_record_invoice_wise(date):
     JOIN
         storagerooms sr ON ph.storageroom_id = sr.id
     WHERE
-        ph.purchase_date = %s
+        ph.purchase_date BETWEEN %s AND %s
     GROUP BY
-        ph.invoice_number, ph.vendor_id, ph.storageroom_id
+        ph.invoice_number, ph.vendor_id, ph.storageroom_id, ph.purchase_date
     ORDER BY
-        MIN(ph.created_at) ASC;
+        ph.purchase_date DESC, MIN(ph.created_at) ASC;
     """
 
-    cumulative_purchases = fetch_all(query, (date,))
-    return cumulative_purchases
+    return fetch_all(query, (from_date, to_date))
 
 def get_average_cost_from_inventory_by_raw_material_id(raw_material_id , destination_id):
     conn = get_db_connection()

@@ -4030,10 +4030,26 @@ def get_transfer_ids():
 def delete_purchase_record():
     if "user" not in session:
         return redirect("/login")
-    today_date = get_current_date()
-    # today_date = '2025-03-25'
-    todays_purchase = get_cumulative_purchase_record_invoice_wise(today_date)
-    return render_template("delete_purchase_record.html", user=session["user"], today_date=today_date, todays_purchase=todays_purchase)
+
+    user = session["user"]
+    if user["role"] != "admin":
+        flash("Access denied.", "danger")
+        return redirect("/dashboard")
+
+    # Get date filters
+    from_date = request.args.get("from_date", get_current_date())
+    to_date   = request.args.get("to_date", get_current_date())
+
+    # Fetch purchases in date range
+    purchases = get_cumulative_purchase_record_invoice_wise_range(from_date, to_date)
+
+    return render_template(
+        "delete_purchase_record.html",
+        user=user,
+        from_date=from_date,
+        to_date=to_date,
+        purchases=purchases  # renamed from todays_purchase → purchases
+    )
 
 
 @app.route("/delete_purchase_and_adjust_stock", methods=["DELETE"])
@@ -5475,9 +5491,9 @@ def product_wise_prebooking():
     cursor.execute("SELECT id, product_name FROM prebooking_products WHERE status = 'active' ORDER BY product_name")
     products = cursor.fetchall()
 
-    # Branches (admin only)
+    # Branches (admin + storekeeper)
     branches = []
-    if role == 'admin':
+    if role in ['admin', 'store_manager']:
         cursor.execute("SELECT id, restaurantname FROM restaurant ORDER BY restaurantname")
         branches = cursor.fetchall()
 
@@ -5491,7 +5507,7 @@ def product_wise_prebooking():
         where  = ["poi.product_id = %s", "po.is_deleted = 0"]
         params = [product_id]
 
-        # Branch filter
+        # Branch filter logic
         if role == 'branch_manager':
             email_to_restaurant = {
                 "bmktcnagar@gmail.com": 1,
@@ -5502,7 +5518,7 @@ def product_wise_prebooking():
             if rid:
                 where.append("po.restaurant_id = %s")
                 params.append(rid)
-        elif role == 'admin' and branch_id:
+        elif role in ['admin', 'store_manager'] and branch_id:
             where.append("po.restaurant_id = %s")
             params.append(branch_id)
 
