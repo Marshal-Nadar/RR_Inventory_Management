@@ -15,16 +15,19 @@
 <div class="page-wrapper">
   <div class="content">
     <div class="page-header d-flex justify-content-between align-items-center">
-      <div class="page-title"><h4>Pre-Booking Orders</h4></div>
-      <div>
-        <a href="/add-prebooking" class="btn btn-primary">
-          <i class="fas fa-plus me-1"></i>New Pre-Booking
-        </a>
-      </div>
-    </div>
+  <div class="page-title"><h4>Pre-Booking Orders</h4></div>
+  <div>
+    <a href="/add-prebooking" class="btn btn-primary me-2">
+      <i class="fas fa-plus me-1"></i>New Pre-Booking
+    </a>
+    <button type="button" class="btn btn-info" onclick="printAllOrders()">
+    <i class="fas fa-print me-1"></i> Print All Orders
+  </button>
+  </div>
+</div>
 
     <!-- ==================== BRANCH SELECTOR (ADMIN ONLY) ==================== -->
-    {% if user.role == 'admin' %}
+    {% if user.role == 'admin' or user.role == 'store_manager' %}
 <div class="card mb-3">
   <div class="card-body py-2">
     <form method="get" id="branchForm" class="row g-2 align-items-center">
@@ -41,12 +44,13 @@
           {% endfor %}
         </select>
       </div>
-      <!-- Preserve filters -->
+      <!-- Preserve other filters when changing branch -->
       <input type="hidden" name="search" value="{{ search }}">
       <input type="hidden" name="status" value="{{ status_filter }}">
       <input type="hidden" name="payment" value="{{ payment_filter }}">
       <input type="hidden" name="start_date" value="{{ start_date }}">
       <input type="hidden" name="end_date" value="{{ end_date }}">
+      <input type="hidden" name="product_id" value="{{ request.args.get('product_id', '') }}">
       <input type="hidden" name="page" value="1">
     </form>
   </div>
@@ -165,18 +169,15 @@
             <tbody>
               {% for order in orders %}
               <tr>
-                <td><strong>{{ order.order_number }}</strong></td>
+                <td><strong>{{ order.id }}</strong></td>
                 <td>{{ order.username }}</td>
                 <td>{{ order.mobile_number }}</td>
-                <td>
+                <td style="font-size: 12px; line-height: 1.4;">
                   {% if order.product_names %}
-                    {% set products = order.product_names.split(',') %}
-                    {% for product in products[:2] %}
-                      <span class="badge bg-light text-dark mb-1">{{ product }}</span><br>
+                    {% set products = order.product_names.split(', ') %}
+                    {% for product in products %}
+                      <div class="mb-1">{{ product.strip() }}</div>
                     {% endfor %}
-                    {% if products|length > 2 %}
-                      <small class="text-muted">+{{ products|length - 2 }} more</small>
-                    {% endif %}
                   {% else %}
                     <span class="text-muted">No products</span>
                   {% endif %}
@@ -244,6 +245,208 @@
     </div>
   </div>
 </div>
+
+<script>
+function printAllOrders() {
+  // Collect current filter parameters
+  const params = new URLSearchParams(window.location.search);
+  
+  // Show loading state
+  const btn = event.target;
+  const originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Preparing...';
+
+  fetch('/prebooking-list-print-all?' + params.toString())
+    .then(response => response.json())
+    .then(data => {
+      const orders = data.orders;
+      const summary = data.summary;
+      const filters = data.filters;
+
+      // Build filter text
+      let filterText = "";
+      if (filters.search || filters.status || filters.payment || filters.start_date || filters.end_date) {
+        filterText = "<strong>Applied Filters:</strong> ";
+        const parts = [];
+        if (filters.search) parts.push(`Search: "${filters.search}"`);
+        if (filters.status) parts.push(`Status: ${filters.status.charAt(0).toUpperCase() + filters.status.slice(1)}`);
+        if (filters.payment) parts.push(`Payment: ${filters.payment.charAt(0).toUpperCase() + filters.payment.slice(1)}`);
+        if (filters.start_date) parts.push(`From: ${filters.start_date}`);
+        if (filters.end_date) parts.push(`To: ${filters.end_date}`);
+        filterText += parts.join(" | ");
+      }
+
+      // Build table rows dynamically
+      let tableRows = "";
+      if (orders.length === 0) {
+        tableRows = `<tr><td colspan="10" style="text-align:center;">No orders found</td></tr>`;
+      } else {
+        orders.forEach(order => {
+          const productsHtml = order.product_names
+            .split(', ')
+            .map(p => p.trim())
+            .join('<br>');
+          
+          const deliveryTime = order.delivery_time 
+    ? new Date(`1970-01-01T${order.delivery_time}:00`).toLocaleTimeString('en-US', { 
+        hour: '2-digit', minute: '2-digit', hour12: true 
+      })
+    : 'N/A';
+
+const deliveryDate = order.delivery_date 
+    ? new Date(order.delivery_date + 'T00:00:00').toLocaleDateString('en-GB')
+    : '';
+
+          tableRows += `
+            <tr>
+              <td style="font-weight:bold;">${order.id}</td>
+              <td>${order.username || ''}</td>
+              <td>${order.mobile_number || ''}</td>
+              <td style="font-size:10.5px;">${productsHtml}</td>
+              <td style="text-align:right;">₹${parseFloat(order.final_amount || 0).toFixed(2)}</td>
+              <td style="text-align:right;">₹${parseFloat(order.amount_paid || 0).toFixed(2)}</td>
+              <td style="text-align:right;">₹${parseFloat(order.pending_balance || 0).toFixed(2)}</td>
+              <td style="text-align:center;">
+                ${new Date(order.delivery_date).toLocaleDateString('en-GB')}<br>${deliveryTime}
+              </td>
+              <td style="text-align:center;">
+                <span class="badge badge-${order.payment_status}">${order.payment_status.toUpperCase()}</span>
+              </td>
+              <td style="text-align:center;">
+                <span class="badge badge-${order.order_status}">${order.order_status.toUpperCase()}</span>
+              </td>
+            </tr>`;
+        });
+      }
+
+      const currentDate = new Date();
+      const printDate = currentDate.toLocaleDateString('en-GB');
+      const printTime = currentDate.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+
+      const printContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Pre-Booking Orders List - All Records</title>
+  <style>
+    /* Same exact styles as your current print function */
+    @page {
+      size: A4 landscape;
+      margin: 1cm;
+      @top-right { content: "${printDate} ${printTime}"; font-size: 11pt; }
+      @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 9pt; }
+    }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #000; margin: 0; padding: 20px 0; }
+    .company-header { text-align: center; margin-bottom: 20px; }
+    .company-header h1 { font-size: 18pt; margin: 0; font-weight: bold; }
+    .company-header h2 { font-size: 14pt; margin: 8px 0 5px 0; }
+    .gst { font-size: 12pt; margin: 5px 0; }
+    .title { font-size: 16pt; font-weight: bold; margin: 15px 0 5px 0; }
+    .printed-on { font-size: 12pt; margin-bottom: 15px; }
+    .header-underline { border-bottom: 3px double #000; margin: 20px 0 30px 0; }
+    .filters { text-align: center; font-size: 11px; margin: 20px 0; color: #444; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th { background-color: #f0f0f0; font-weight: bold; padding: 10px 8px; border: 1.5px solid #000; font-size: 11.5px; text-align: left; }
+    td { padding: 8px; border: 1px solid #000; vertical-align: top; font-size: 10.8px; }
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    .badge { padding: 4px 10px; border-radius: 6px; font-size: 10px; color: white; font-weight: bold; }
+    .badge-pending { background-color: #ffc107; color: #000; }
+    .badge-partial { background-color: #17a2b8; }
+    .badge-completed { background-color: #28a745; }
+    .badge-confirmed { background-color: #007bff; }
+    .badge-preparing { background-color: #fd7e14; }
+    .badge-ready { background-color: #20c997; }
+    .badge-delivered { background-color: #6c757d; }
+    .badge-cancelled { background-color: #dc3545; }
+    .totals-row td { font-weight: bold; background-color: #e9ecef; font-size: 13px; padding: 12px 8px; }
+    .footer { margin-top: 50px; text-align: center; font-size: 11px; color: #555; }
+  </style>
+</head>
+<body>
+  <div class="company-header">
+    <h1>SALEM RR BIRIYANI TIRUNELVELLI</h1>
+    <h2>DHARANI GROUP OF COMPANY</h2>
+    <div class="gst"><strong>GST :</strong> 33AAWFD7590A1Z9</div>
+    <div class="title">PRE-BOOKING ORDERS LIST</div>
+    <div class="printed-on">Printed on: ${printDate} ${printTime}</div>
+  </div>
+
+  <div class="header-underline"></div>
+
+  ${filterText ? `<div class="filters">${filterText}</div>` : ''}
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:8%;">Order ID</th>
+        <th style="width:12%;">Customer</th>
+        <th style="width:10%;">Mobile</th>
+        <th style="width:25%;">Products</th>
+        <th style="width:8%;" class="text-right">Final Amt</th>
+        <th style="width:8%;" class="text-right">Paid</th>
+        <th style="width:8%;" class="text-right">Pending</th>
+        <th style="width:10%;">Delivery Date/Time</th>
+        <th class="text-center">Payment</th>
+        <th class="text-center">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${tableRows}
+      <tr class="totals-row">
+        <td colspan="4" style="text-align:right;"><strong>TOTAL</strong></td>
+        <td style="text-align:right;"><strong>₹${summary.total_prebooked.toFixed(2)}</strong></td>
+        <td style="text-align:right;"><strong>₹${summary.total_paid.toFixed(2)}</strong></td>
+        <td style="text-align:right;"><strong>₹${summary.total_pending.toFixed(2)}</strong></td>
+        <td colspan="3"></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="footer">
+    <p>“More biryani. More smiles. More happiness.”</p>
+    <p>Thank you!</p>
+  </div>
+</body>
+</html>`;
+
+      // Print using iframe (same method as current print)
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentWindow.document;
+      doc.open();
+      doc.write(printContent);
+      doc.close();
+
+      iframe.onload = () => {
+        setTimeout(() => {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+        }, 600);
+      };
+
+      setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      }, 10000);
+    })
+    .catch(err => {
+      console.error(err);
+      alert("Error preparing print. Please try again.");
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    });
+}
+</script>
 
 <script>
 function resetFilters() {

@@ -13,8 +13,10 @@ import os
 import pytz
 import random
 import string
+from flask import jsonify
 from dotenv import load_dotenv
 load_dotenv()
+
 # Get the current working directory
 current_workspace = os.getcwd()
 
@@ -2169,42 +2171,59 @@ def pending_payments():
 
 @app.route("/process_payments", methods=["POST"])
 def process_payments():
-    # try:
-    if request.method == "POST":
-        vendor_id = request.json.get("vendor_id")
-        paid_values = []
-        for payment in request.json.get("payments", []):
-            if payment["pay_amount"] > 0:
-                paid_values.append(payment)
-
-        connection = get_db_connection()
-        cursor = connection.cursor()
-        for payment_detail in paid_values:
-            cursor.execute(
-                """
-                    INSERT INTO vendor_payment_tracker (vendor_id, invoice_number, purchase_date, total_paid)
-                    VALUES (%s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE total_paid = total_paid + %s
-                    """,
-                (vendor_id, payment_detail["invoice_number"], payment_detail["purchase_date"],
-                 payment_detail["pay_amount"], payment_detail["pay_amount"])
-            )
-            cursor.execute(
-                """
-                    INSERT INTO payment_records (vendor_id, invoice_number, purchase_date, amount_paid, mode_of_payment, paid_on)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    """,
-                (vendor_id, payment_detail["invoice_number"], payment_detail["purchase_date"],
-                    payment_detail["pay_amount"], payment_detail["mode_of_payment"], payment_detail["date_of_payment"])
-            )
-        connection.commit()
-        cursor.close()
-        connection.close()
-        flash('Payment processed successfully!', 'success')
-        return jsonify({'message': 'Payment processed successfully'}), 200
-    # except Exception as e:
-    #     flash(f'An error occurred while processing the payment. Please try again. {str(e)}', 'error')
-    #     return jsonify({'error': str(e)}), 400
+    try:
+        if request.method == "POST":
+            vendor_id = request.json.get("vendor_id")
+            paid_values = []
+            
+            connection = get_db_connection()
+            cursor = connection.cursor()
+            
+            # Process each payment
+            for payment_detail in request.json.get("payments", []):
+                if payment_detail["pay_amount"] > 0:
+                    paid_values.append(payment_detail)
+                    
+                    # Update vendor payment tracker
+                    cursor.execute(
+                        """
+                        INSERT INTO vendor_payment_tracker (vendor_id, invoice_number, purchase_date, total_paid)
+                        VALUES (%s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE total_paid = total_paid + %s
+                        """,
+                        (vendor_id, payment_detail["invoice_number"], payment_detail["purchase_date"],
+                         payment_detail["pay_amount"], payment_detail["pay_amount"])
+                    )
+                    
+                    # Record payment
+                    cursor.execute(
+                        """
+                        INSERT INTO payment_records (vendor_id, invoice_number, purchase_date, amount_paid, mode_of_payment, paid_on)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        """,
+                        (vendor_id, payment_detail["invoice_number"], payment_detail["purchase_date"],
+                         payment_detail["pay_amount"], payment_detail["mode_of_payment"], payment_detail["date_of_payment"])
+                    )
+                    
+                    # DEDUCT FROM NBS REPORT (Only for cash and UPI payments)
+                    if payment_detail["mode_of_payment"].lower() in ['cash', 'upi']:
+                        deduct_vendor_payment_from_nbs(
+                            vendor_id=vendor_id,
+                            amount=payment_detail["pay_amount"],
+                            payment_mode=payment_detail["mode_of_payment"],
+                            payment_date=payment_detail["date_of_payment"]
+                        )
+            
+            connection.commit()
+            cursor.close()
+            connection.close()
+            
+            flash('Payment processed successfully! NBS totals updated.', 'success')
+            return jsonify({'message': 'Payment processed successfully'}), 200
+            
+    except Exception as e:
+        flash(f'An error occurred: {str(e)}', 'error')
+        return jsonify({'error': str(e)}), 400
 
 
 @app.route('/storageroom_stock')
@@ -4429,6 +4448,100 @@ def edit_nbs_report(report_id):
         selected_restaurant_id=report['restaurant_id']
     )
 
+def deduct_vendor_payment_from_nbs(vendor_id, amount, payment_mode, payment_date):
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        # FIXED: Use a central/main branch ID for all deductions
+        # Change 1 to your actual main restaurant_id (check your restaurant table)
+        restaurant_id = 1  
+        
+        print(f"DEBUG: NBS Deduction - Vendor:{vendor_id} | Amt:{amount} | Mode:{payment_mode} | Date:{payment_date} | Branch:{restaurant_id}")
+        
+        # Check for existing report on this date + branch (limit 1 to avoid multiples confusion)
+        cursor.execute("""
+            SELECT id, cash, upi, net_counter 
+            FROM nbs_daily_reports 
+            WHERE report_date = %s AND restaurant_id = %s
+            LIMIT 1
+        """, (payment_date, restaurant_id))
+        
+        existing = cursor.fetchone()
+        
+        if existing:
+            # Update existing
+            new_cash = float(existing['cash'] or 0)
+            new_upi  = float(existing['upi'] or 0)
+            
+            if payment_mode.lower() == 'cash':
+                new_cash -= amount
+            elif payment_mode.lower() == 'upi':
+                new_upi -= amount
+            
+            # Recalculate net_counter properly
+            # Note: This assumes other fields are already set; adjust if needed
+            net_counter = new_upi + new_cash + (existing.get('r_expense') or 0) + (existing.get('swiggy') or 0) + (existing.get('zomato') or 0)
+            
+            cursor.execute("""
+                UPDATE nbs_daily_reports 
+                SET 
+                    cash = %s,
+                    upi = %s,
+                    net_counter = %s,
+                    difference = net_counter - net_sales,  -- recalculate diff
+                    vendor_payment_note = CONCAT(IFNULL(vendor_payment_note, ''), %s),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (
+                new_cash, new_upi, net_counter,
+                f"\nVendor {vendor_id} {payment_mode.upper()} -₹{amount}",
+                existing['id']
+            ))
+            print(f"DEBUG: Updated existing row ID {existing['id']} → Cash:{new_cash} UPI:{new_upi}")
+            
+        else:
+            # Create new deduction-only row
+            cash_val = -amount if payment_mode.lower() == 'cash' else 0
+            upi_val  = -amount if payment_mode.lower() == 'upi' else 0
+            
+            # Minimal row - only counter affected
+            cursor.execute("""
+                INSERT INTO nbs_daily_reports (
+                    report_date, restaurant_id,
+                    cash, upi,
+                    total_income, net_sales, net_counter, difference,
+                    is_vendor_payment, vendor_payment_note,
+                    created_at, updated_at
+                ) VALUES (
+                    %s, %s,
+                    %s, %s,
+                    0, 0, %s, %s,
+                    1, %s,
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+            """, (
+                payment_date, restaurant_id,
+                cash_val, upi_val,
+                cash_val + upi_val,  # net_counter = cash + upi (other 0)
+                cash_val + upi_val,  # difference = net_counter - net_sales (0 sales)
+                f"Vendor {vendor_id} deduction - {payment_mode.upper()} -₹{amount}"
+            ))
+            print(f"DEBUG: Created new deduction row → Cash:{cash_val} UPI:{upi_val}")
+        
+        connection.commit()
+        return True
+        
+    except Exception as e:
+        print(f"ERROR in deduction: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        connection.rollback()
+        return False
+    finally:
+        cursor.close()
+        connection.close()
+
 @app.route('/nbs-reports', methods=['GET', 'POST'])
 def nbs_reports():
     if "user" not in session:
@@ -4506,7 +4619,7 @@ def nbs_reports():
     cursor.execute(query, (*params, per_page, offset))
     reports = cursor.fetchall() or []
 
-    # --- Totals ---
+    # --- Calculate Totals ---
     total_income_sum = total_net_counter_sum = total_net_sales_sum = total_difference_sum = 0.0
     total_swiggy_sum = total_zomato_sum = 0.0
 
@@ -4538,6 +4651,20 @@ def nbs_reports():
         total_swiggy_sum += swiggy
         total_zomato_sum += zomato
 
+    # --- SIMPLE: Get Cash & UPI Totals DIRECTLY from NBS reports ---
+    cursor.execute(f"""
+    SELECT 
+        COALESCE(SUM(cash), 0) AS total_cash,
+        COALESCE(SUM(upi), 0) AS total_upi
+    {base_query}
+    """, params)
+    
+    totals_data = cursor.fetchone()
+    
+    total_cash = float(totals_data['total_cash'])
+    total_upi = float(totals_data['total_upi'])
+    total_counter = total_cash + total_upi
+
     cursor.close()
     conn.close()
 
@@ -4560,7 +4687,10 @@ def nbs_reports():
         start_date=start_date,
         end_date=end_date,
         page=page,
-        total_pages=total_pages
+        total_pages=total_pages,
+        total_cash_filtered=total_cash,
+        total_upi_filtered=total_upi,
+        total_counter_filtered=total_counter
     )
 
 
@@ -4961,7 +5091,8 @@ def prebooking_list():
         if rid:
             where.append("po.restaurant_id = %s")
             params.append(rid)
-    elif role == 'admin' and branch_id:
+    elif role in ['admin', 'store_manager'] and branch_id:
+        # Apply selected branch filter for both admin and store_manager
         where.append("po.restaurant_id = %s")
         params.append(branch_id)
 
@@ -5081,6 +5212,172 @@ def prebooking_list():
         end_date=end_date,
         datetime=datetime
     )
+
+
+
+@app.route('/prebooking-list-print-all')
+def prebooking_list_print_all():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    user = session["user"]
+    role = user["role"]
+    email = user.get("email")
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # === SAME FILTER LOGIC AS MAIN LIST ===
+    branch_id = request.args.get("branch_id")
+    search = request.args.get("search", "").strip()
+    status_filter = request.args.get("status", "")
+    payment_filter = request.args.get("payment", "")
+    start_date = request.args.get("start_date", "")
+    end_date = request.args.get("end_date", "")
+    product_filter = request.args.get("product_id", "")
+
+    where = ["po.is_deleted = 0"]
+    params = []
+
+    if role == 'branch_manager':
+        email_to_restaurant = {
+            "bmktcnagar@gmail.com": 1,
+            "bmnewbs@gmail.com": 2,
+            "dharanistorekeeper@gmail.com": 4
+        }
+        rid = email_to_restaurant.get(email)
+        if rid:
+            where.append("po.restaurant_id = %s")
+            params.append(rid)
+    elif role == 'admin' and branch_id:
+        where.append("po.restaurant_id = %s")
+        params.append(branch_id)
+
+    if search:
+        where.append("(po.order_number LIKE %s OR po.username LIKE %s OR po.mobile_number LIKE %s)")
+        s = f"%{search}%"
+        params.extend([s, s, s])
+    if status_filter:
+        where.append("po.order_status = %s")
+        params.append(status_filter)
+    if payment_filter:
+        where.append("po.payment_status = %s")
+        params.append(payment_filter)
+    if start_date and end_date:
+        where.append("po.delivery_date BETWEEN %s AND %s")
+        params.extend([start_date, end_date])
+    elif start_date:
+        where.append("po.delivery_date >= %s")
+        params.append(start_date)
+    elif end_date:
+        where.append("po.delivery_date <= %s")
+        params.append(end_date)
+    if product_filter:
+        where.append("EXISTS (SELECT 1 FROM prebooking_order_items poi WHERE poi.prebooking_order_id = po.id AND poi.product_id = %s)")
+        params.append(product_filter)
+
+    where_clause = " AND ".join(where) if where else "1=1"
+
+    # === SUMMARY ===
+    summary_query = f"""
+        SELECT 
+            COALESCE(SUM(po.final_amount), 0) AS total_prebooked,
+            COALESCE(SUM(paid.paid_amount), 0) AS total_paid
+        FROM prebooking_orders po
+        LEFT JOIN (
+            SELECT order_id, SUM(amount) AS paid_amount
+            FROM prebooking_payments
+            GROUP BY order_id
+        ) paid ON paid.order_id = po.id
+        WHERE {where_clause}
+    """
+    cursor.execute(summary_query, params)
+    raw_summary = cursor.fetchone()
+    total_prebooked = float(raw_summary['total_prebooked'] or 0)
+    total_paid = float(raw_summary['total_paid'] or 0)
+    total_pending = max(0.0, total_prebooked - total_paid)
+
+    # === FETCH ALL ORDERS ===
+    orders_query = f"""
+        SELECT 
+            po.*,
+            r.restaurantname,
+            COALESCE(paid.paid_amount, 0) AS actual_paid_amount
+        FROM prebooking_orders po
+        LEFT JOIN restaurant r ON po.restaurant_id = r.id
+        LEFT JOIN (
+            SELECT order_id, SUM(amount) AS paid_amount
+            FROM prebooking_payments
+            GROUP BY order_id
+        ) paid ON paid.order_id = po.id
+        WHERE {where_clause}
+        ORDER BY po.created_at DESC
+    """
+    cursor.execute(orders_query, params)
+    orders = cursor.fetchall()
+
+    # === ATTACH PRODUCTS & CALCULATE PAID/PENDING + MAKE JSON SAFE ===
+    safe_orders = []
+    for order in orders:
+        cursor.execute("""
+            SELECT product_name, quantity 
+            FROM prebooking_order_items 
+            WHERE prebooking_order_id = %s
+        """, (order['id'],))
+        items = cursor.fetchall()
+        product_list = [f"{item['product_name']} ({item['quantity']})" for item in items] if items else ["No products"]
+        
+        final_amount = float(order.get('final_amount') or 0)
+        paid = float(order.get('actual_paid_amount') or 0)
+        pending = max(0.0, final_amount - paid)
+
+        # Convert timedelta to string (if exists)
+        delivery_time_str = None
+        if order.get('delivery_time') is not None:
+            if isinstance(order['delivery_time'], timedelta):
+                # Convert timedelta to HH:MM:SS string, then to 12-hour format later in JS if needed
+                total_seconds = int(order['delivery_time'].total_seconds())
+                hours = total_seconds // 3600
+                minutes = (total_seconds % 3600) // 60
+                delivery_time_str = f"{hours:02d}:{minutes:02d}"
+            else:
+                delivery_time_str = str(order['delivery_time'])
+
+        # Build a clean dict with only JSON-serializable types
+        safe_order = {
+            "id": order['id'],
+            "username": order.get('username') or '',
+            "mobile_number": order.get('mobile_number') or '',
+            "product_names": ", ".join(product_list),
+            "final_amount": final_amount,
+            "amount_paid": paid,
+            "pending_balance": pending,
+            "delivery_date": order['delivery_date'].strftime('%Y-%m-%d') if order['delivery_date'] else None,
+            "delivery_time": delivery_time_str,  # now a string or None
+            "payment_status": order['payment_status'],
+            "order_status": order['order_status']
+        }
+        safe_orders.append(safe_order)
+
+    cursor.close()
+    conn.close()
+
+    # Return only safe data
+    return jsonify({
+        "orders": safe_orders,
+        "summary": {
+            "total_prebooked": round(total_prebooked, 2),
+            "total_paid": round(total_paid, 2),
+            "total_pending": round(total_pending, 2)
+        },
+        "filters": {
+            "search": search,
+            "status": status_filter,
+            "payment": payment_filter,
+            "start_date": start_date,
+            "end_date": end_date
+        }
+    })
 
 
 # ==================== VIEW PREBOOKING ====================
