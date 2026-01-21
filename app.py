@@ -357,6 +357,69 @@ def edit_storage_room():
     return redirect(url_for('storageroomlist'))
 
 
+def update_nbs_misc_expense(restaurant_id, report_date):
+    """
+    Recalculate and update r_expense in nbs_daily_reports based on current miscellaneous_items
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Sum all active misc expenses for this branch + date
+        cursor.execute("""
+            SELECT COALESCE(SUM(cost), 0) AS total_misc
+            FROM miscellaneous_items
+            WHERE restaurant_id = %s
+              AND DATE(created_at) = %s
+              AND status = 'active'
+        """, (restaurant_id, report_date))
+        
+        result = cursor.fetchone()
+        new_r_expense = float(result['total_misc'] or 0)
+        
+        # Check if NBS report exists for this date + branch
+        cursor.execute("""
+            SELECT id, cash, upi, r_expense, net_counter
+            FROM nbs_daily_reports 
+            WHERE restaurant_id = %s AND report_date = %s
+        """, (restaurant_id, report_date))
+        
+        report = cursor.fetchone()
+        
+        if report:
+            # Update r_expense and net_counter
+            old_r_expense = float(report['r_expense'] or 0)
+            delta = new_r_expense - old_r_expense
+            
+            new_net_counter = float(report['net_counter'] or 0) + delta  # Adjust counter
+            
+            cursor.execute("""
+                UPDATE nbs_daily_reports
+                SET 
+                    r_expense = %s,
+                    net_counter = %s,
+                    difference = net_counter - net_sales,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (new_r_expense, new_net_counter, report['id']))
+            
+            print(f"Updated NBS report {report['id']} → r_expense: {new_r_expense}")
+        else:
+            # Optional: Create a new NBS row if no report exists (only if you want)
+            # For now, skip if no report — you can add later if needed
+            print(f"No NBS report found for {report_date} branch {restaurant_id} — skipping update")
+        
+        conn.commit()
+        return True
+        
+    except Exception as e:
+        print(f"Error updating NBS misc expense: {str(e)}")
+        conn.rollback()
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
 @app.route("/addmiscitem", methods=["GET", "POST"])
 def addmiscitem():
     if "user" not in session:
@@ -428,6 +491,7 @@ def addmiscitem():
             manual_date_str, created_at_str, updated_at_str
         )):
             flash("Miscellaneous item added successfully!", "success")
+            update_nbs_misc_expense(restaurant_id, date.today())
         else:
             flash("Error adding miscellaneous item. Please try again.", "danger")
 
@@ -544,9 +608,22 @@ def update_misc_item(item_id):
     if "user" not in session:
         return jsonify({"success": False, "message": "Unauthorized"}), 401
 
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+
     try:
         data = request.get_json()
-        
+
+        # FIRST: Fetch info BEFORE update
+        cursor.execute("""
+            SELECT restaurant_id, DATE(COALESCE(manual_date, created_at)) as report_date
+            FROM miscellaneous_items WHERE id = %s
+        """, (item_id,))
+        item_info = cursor.fetchone()
+
+        if not item_info:
+            return jsonify({"success": False, "message": "Item not found"}), 404
+
         # Extract form data
         expense_type_id = data.get("expense_type_id")
         expense_subcategory_id = data.get("expense_subcategory_id") or None
@@ -576,7 +653,7 @@ def update_misc_item(item_id):
         else:
             manual_date_str = None
 
-        # Update query
+        # Define the update query (THIS WAS MISSING!)
         update_query = """
         UPDATE miscellaneous_items 
         SET expense_type_id = %s, 
@@ -590,61 +667,72 @@ def update_misc_item(item_id):
         WHERE id = %s
         """
 
-        if execute_query(update_query, (
+        # Execute update
+        cursor.execute(update_query, (
             expense_type_id, expense_subcategory_id, restaurant_id, 
             branch_manager, cost, notes, manual_date_str, 
             updated_at_str, item_id
-        )):
-            return jsonify({
-                "success": True, 
-                "message": "Item updated successfully!"
-            })
-        else:
-            return jsonify({
-                "success": False, 
-                "message": "Error updating item"
-            }), 500
+        ))
+
+        connection.commit()
+
+        # Update NBS using pre-fetched info
+        if item_info['restaurant_id'] and item_info['report_date']:
+            update_nbs_misc_expense(item_info['restaurant_id'], item_info['report_date'])
+
+        return jsonify({"success": True, "message": "Item updated successfully!"})
 
     except Exception as e:
         print(f"Error updating misc item: {str(e)}")
-        return jsonify({
-            "success": False, 
-            "message": f"Server error: {str(e)}"
-        }), 500
+        connection.rollback()
+        return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
+
+    finally:
+        cursor.close()
+        connection.close()
 
 @app.route("/delete_misc_item/<int:item_id>", methods=["DELETE"])
 def delete_misc_item(item_id):
     if "user" not in session:
         return jsonify({"success": False, "message": "Unauthorized"}), 401
 
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+
     try:
-        # First, check if the item exists
-        check_query = "SELECT id FROM miscellaneous_items WHERE id = %s AND status = 'active'"
-        item_exists = fetch_one(check_query, (item_id,))
-        
-        if not item_exists:
-            return jsonify({"success": False, "message": "Item not found"}), 404
+        # FIRST: Fetch info BEFORE deleting
+        cursor.execute("""
+            SELECT restaurant_id, DATE(COALESCE(manual_date, created_at)) as report_date
+            FROM miscellaneous_items WHERE id = %s AND status = 'active'
+        """, (item_id,))
+        item_info = cursor.fetchone()
 
-        # Soft delete (update status to 'inactive')
-        delete_query = "UPDATE miscellaneous_items SET status = 'inactive', updated_at = CURRENT_TIMESTAMP WHERE id = %s"
+        if not item_info:
+            return jsonify({"success": False, "message": "Item not found or already deleted"}), 404
 
-        if execute_query(delete_query, (item_id,)):
-            return jsonify({
-                "success": True,
-                "message": "Item deleted successfully!"
-            }), 200
-        else:
-            return jsonify({
-                "success": False, 
-                "message": "Error deleting item"
-            }), 500
+        # Soft delete
+        cursor.execute("""
+            UPDATE miscellaneous_items 
+            SET status = 'inactive', updated_at = CURRENT_TIMESTAMP 
+            WHERE id = %s
+        """, (item_id,))
+
+        connection.commit()
+
+        # Update NBS using pre-fetched info
+        if item_info['restaurant_id'] and item_info['report_date']:
+            update_nbs_misc_expense(item_info['restaurant_id'], item_info['report_date'])
+
+        return jsonify({"success": True, "message": "Item deleted successfully!"}), 200
 
     except Exception as e:
         print(f"Error deleting misc item: {str(e)}")
-        return jsonify({
-            "success": False, 
-            "message": f"Server error: {str(e)}"
-        }), 500
+        connection.rollback()
+        return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
+
+    finally:
+        cursor.close()
+        connection.close()
     
 @app.route("/misc_item_report", methods=["GET"])
 def misc_item_report():
@@ -4655,15 +4743,20 @@ def nbs_reports():
     cursor.execute(f"""
     SELECT 
         COALESCE(SUM(cash), 0) AS total_cash,
-        COALESCE(SUM(upi), 0) AS total_upi
+        COALESCE(SUM(upi), 0) AS total_upi,
+        COALESCE(SUM(r_expense), 0) AS total_r_expense
     {base_query}
     """, params)
-    
+
     totals_data = cursor.fetchone()
-    
-    total_cash = float(totals_data['total_cash'])
+
+    total_cash_raw = float(totals_data['total_cash'])
     total_upi = float(totals_data['total_upi'])
-    total_counter = total_cash + total_upi
+    total_r_expense = float(totals_data['total_r_expense'])
+
+    # Deduct miscellaneous expenses from cash (this is what you want!)
+    total_cash_filtered = total_cash_raw - total_r_expense
+    total_counter = total_cash_filtered + total_upi
 
     cursor.close()
     conn.close()
@@ -4688,7 +4781,7 @@ def nbs_reports():
         end_date=end_date,
         page=page,
         total_pages=total_pages,
-        total_cash_filtered=total_cash,
+        total_cash_filtered=total_cash_filtered,
         total_upi_filtered=total_upi,
         total_counter_filtered=total_counter
     )
