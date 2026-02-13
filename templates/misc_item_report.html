@@ -24,6 +24,7 @@
     </div>
 
     <!-- Filter/Search Section -->
+<!-- Filter/Search Section -->
 <div class="card mb-4">
   <div class="card-body">
     <form method="GET" action="/misc_item_report">
@@ -81,6 +82,15 @@
           </select>
         </div>
 
+        <div class="col-md-2">
+          <label for="payment_method">Payment</label>
+          <select name="payment_method" id="filter_payment_method" class="form-control">
+            <option value="">All</option>
+            <option value="cash" {% if request.args.get('payment_method') == 'cash' %}selected{% endif %}>Cash</option>
+            <option value="upi" {% if request.args.get('payment_method') == 'upi' %}selected{% endif %}>UPI</option>
+          </select>
+        </div>
+
       </div>
 
       <div class="mt-3">
@@ -107,6 +117,7 @@
             <th>Branch</th>
             <th>Branch Manager</th>
             <th>Notes</th>
+            <th>Payment</th>
             <th>Cost</th>
             <th>Date</th>
             {% if user.role == 'admin' %}
@@ -124,6 +135,13 @@
             <td>{{ item.branch_name or item.restaurant_id or '-' }}</td>
             <td>{{ item.branch_manager or '-' }}</td>
             <td class="notes-col">{{ item.notes or '-' }}</td>
+            <td>
+  {% if item.payment_method == 'upi' %}
+    <span class="badge bg-success">UPI</span>
+  {% else %}
+    <span class="badge bg-secondary">Cash</span>
+  {% endif %}
+</td>
             <td>{{ item.cost or '-' }}</td>
             <td>
               {% if item.manual_date %}
@@ -143,6 +161,7 @@
                                         "restaurant_id": item.restaurant_id,
                                         "branch_manager": item.branch_manager or "",
                                         "cost": item.cost or "",
+                                        "payment_method": item.payment_method or "cash",
                                         "notes": item.notes or "",
                                         "manual_date": item.manual_date.strftime("%Y-%m-%d") if item.manual_date else "",
                                         "type_of_expense": item.type_of_expense or "",
@@ -274,6 +293,17 @@
               </div>
             </div>
 
+            <div class="col-lg-6 col-sm-6 col-12">
+              <div class="form-group">
+                <label>Payment Method</label>
+                <select name="payment_method" id="edit_payment_method" class="form-control" required>
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                </select>
+              </div>
+            </div>
+
+
             {% if user.role == 'admin' %}
             <!-- Manual Date -->
             <div class="col-lg-6 col-sm-6 col-12">
@@ -398,7 +428,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const table = $('#miscTable').dataTable().api();
       table.rows({ search: 'applied' }).every(function (rowIdx, tableLoop, rowLoop) {
         const rowData = this.data();
-        const costValue = rowData[6]; // Cost is in column index 6
+        const costValue = rowData[7]; // Cost is in column index 7
 
         if (costValue && costValue !== '-') {
           const numericCost = parseFloat(costValue.toString().replace(/[^\d.-]/g, ''));
@@ -463,6 +493,7 @@ document.addEventListener('DOMContentLoaded', function() {
       document.getElementById('edit_restaurant_id').value = data.restaurant_id || '';
       document.getElementById('edit_branch_manager').value = data.branch_manager || '';
       document.getElementById('edit_cost').value = data.cost || '';
+      document.getElementById('edit_payment_method').value = data.payment_method || 'cash';
       document.getElementById('edit_notes').value = data.notes || '';
 
       // Manual date (only for admins)
@@ -732,7 +763,8 @@ document.addEventListener('DOMContentLoaded', function() {
             <td style="padding: 6px; font-size: 10px; vertical-align: top;">${rowData[4] || '-'}</td>
             <td style="padding: 6px; font-size: 10px; vertical-align: top;">${rowData[5] || '-'}</td>
             <td style="padding: 6px; font-size: 10px; vertical-align: top;">${rowData[6] || '-'}</td>
-            <td style="padding: 6px; font-size: 10px; vertical-align: top;">${formatDateDDMMYY(rowData[7]) || '-'}</td>
+            <td style="padding: 6px; font-size: 10px; vertical-align: top;">${rowData[7] || '-'}</td>
+            <td style="padding: 6px; font-size: 10px; vertical-align: top;">${formatDateDDMMYY(rowData[8]) || '-'}</td>
         </tr>
     `;
       });
@@ -851,6 +883,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <th style="width: 16%;">Branch</th>
                         <th style="width: 12%;">Branch Manager</th>
                         <th style="width: 30%;">Notes</th>
+                        <th style="width: 7%;">Payment</th>
                         <th style="width: 8%;">Cost (₹)</th>
                         <th style="width: 9%;">Date</th>
                     </tr>

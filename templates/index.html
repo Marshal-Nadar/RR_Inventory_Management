@@ -1,114 +1,190 @@
-{% extends 'base.html' %}
-{% block content %}
+{% extends 'base.html' %} {% block content %}
 <div class="page-wrapper">
-    <div class="content">
-        {% if user.role == 'admin' %}
-        <!-- ===================== ADMIN DASHBOARD ===================== -->
-        <div class="row">
-            <div class="col-lg-4 col-sm-6 col-12">
-                <div class="dash-widget">
-                    <div class="dash-widgetimg">
-                        <span><img src="../static/img/icons/dash1.svg" alt="img"></span>
-                    </div>
-                    <div class="dash-widgetcontent">
-                        <h5>&#8377;<span class="counters" id="totalPurchasedAmount">{{
-                                cost_details.total_purchased_amount }}</span></h5>
-                        <h6>Total Purchase Amount (Rs)</h6>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-4 col-sm-6 col-12">
-                <div class="dash-widget dash1">
-                    <div class="dash-widgetimg">
-                        <span><img src="../static/img/icons/dash2.svg" alt="img"></span>
-                    </div>
-                    <div class="dash-widgetcontent">
-                        <h5>&#8377;<span class="counters" id="totalPaidAmount">{{ cost_details.total_paid }}</span></h5>
-                        <h6>Total Amount Paid (Rs)</h6>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-4 col-sm-6 col-12">
-                <div class="dash-widget dash2">
-                    <div class="dash-widgetimg">
-                        <span><img src="../static/img/icons/dash4.svg" alt="img"></span>
-                    </div>
-                    <div class="dash-widgetcontent">
-                        <h5>&#8377;<span class="counters" id="totalDueAmount">{{ cost_details.total_due }}</span></h5>
-                        <h6>Total Amount Due (Rs)</h6>
-                    </div>
-                </div>
-            </div>
+  <div class="content">
+    {% if user.role == 'admin' %}
+    <!-- ===================== ADMIN DASHBOARD ===================== -->
+    <div class="row text-center">
+      <!-- CASH FIRST -->
+      <div class="col-lg-4 col-md-4 col-sm-4 col-12">
+        <div class="dash-widget dash3">
+          <div class="dash-widgetimg">
+            <span><img src="../static/img/icons/dash2.svg" alt="img" /></span>
+          </div>
+          <div class="dash-widgetcontent">
+            <h5>₹ <span class="counters">{{ total_cash }}</span></h5>
+            <h6>Total Cash</h6>
+          </div>
         </div>
+      </div>
 
-
-        <!-- Purchase Trend Chart -->
-        <div class="row mt-4">
-            <div class="col-lg-12">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="card-title mb-0">Purchase Trend</h5>
-
-
-                        <div class="d-flex gap-2">
-                            <!-- Filter Type -->
-                            <select id="filterType" class="form-select w-auto">
-                                <option value="year">Year</option>
-                                <option value="month">Month</option>
-                                <option value="custom">Custom Range</option>
-                            </select>
-
-
-                            <div id="yearFilter"></div>
-                            <div id="monthFilter"></div>
-                            <div id="customFilter"></div>
-
-
-                            <!-- Year Selector -->
-                            <select id="yearSelector" class="form-select w-auto"></select>
-
-
-                            <!-- Month Selector (hidden by default) -->
-                            <select id="monthSelector" class="form-select w-auto" style="display:none;">
-                                <option value="1">January</option>
-                                <option value="2">February</option>
-                                <option value="3">March</option>
-                                <option value="4">April</option>
-                                <option value="5">May</option>
-                                <option value="6">June</option>
-                                <option value="7">July</option>
-                                <option value="8">August</option>
-                                <option value="9">September</option>
-                                <option value="10">October</option>
-                                <option value="11">November</option>
-                                <option value="12">December</option>
-                            </select>
-
-
-                            <!-- Custom Date Range (hidden by default) -->
-                            <input type="date" id="fromDate" class="form-control" style="display:none;">
-                            <input type="date" id="toDate" class="form-control" style="display:none;">
-                            <button id="applyCustom" class="btn btn-primary" style="display:none;">Apply</button>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="purchaseChart"></canvas>
-                    </div>
-                </div>
-            </div>
+      <!-- UPI SECOND -->
+      <div class="col-lg-4 col-md-4 col-sm-4 col-12">
+        <div class="dash-widget dash4">
+          <div class="dash-widgetimg">
+            <span><img src="../static/img/icons/cash.svg" alt="Cash" /></span>
+          </div>
+          <div class="dash-widgetcontent">
+            <h5>₹ <span class="counters">{{ total_upi }}</span></h5>
+            <h6>Total UPI</h6>
+          </div>
         </div>
-        {% else %}
-        <!-- ===================== WELCOME SCREEN FOR NON-ADMINS ===================== -->
-        <div class="d-flex justify-content-center align-items-center" style="height: 70vh; flex-direction: column;">
-            <img src="../static/img/applogo.jpg" alt="Logo" width="120" class="mb-4">
-            <h2 class="mb-3">Welcome, {{ user.username }} 👋</h2>
-            <p class="text-muted">
-                You are logged in as a <b>{{ user.role.replace('_', ' ') | title }}</b>.<br>
-                Use the sidebar to manage your tasks such as <b>Miscellaneous Expenses</b> and <b>Transfers</b>.
-            </p>
+      </div>
+
+      <!-- BALANCE LAST -->
+      <div class="col-lg-4 col-md-4 col-sm-4 col-12">
+        <div class="dash-widget dash5">
+          <div class="dash-widgetimg">
+            <span><img src="../static/img/icons/dash1.svg" alt="img" /></span>
+          </div>
+          <div class="dash-widgetcontent">
+            <h5>₹ <span class="counters">{{ total_balance }}</span></h5>
+            <h6>Total Balance</h6>
+          </div>
         </div>
-        {% endif %}
+      </div>
     </div>
+    <div class="row">
+      <div class="col-lg-4 col-sm-6 col-12">
+        <div class="dash-widget">
+          <div class="dash-widgetimg">
+            <span><img src="../static/img/icons/dash1.svg" alt="img" /></span>
+          </div>
+          <div class="dash-widgetcontent">
+            <h5>
+              &#8377;<span class="counters" id="totalPurchasedAmount"
+                >{{ cost_details.total_purchased_amount }}</span
+              >
+            </h5>
+            <h6>Total Purchase Amount (Rs)</h6>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-4 col-sm-6 col-12">
+        <div class="dash-widget dash1">
+          <div class="dash-widgetimg">
+            <span><img src="../static/img/icons/dash2.svg" alt="img" /></span>
+          </div>
+          <div class="dash-widgetcontent">
+            <h5>
+              &#8377;<span class="counters" id="totalPaidAmount"
+                >{{ cost_details.total_paid }}</span
+              >
+            </h5>
+            <h6>Total Amount Paid (Rs)</h6>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-4 col-sm-6 col-12">
+        <div class="dash-widget dash2">
+          <div class="dash-widgetimg">
+            <span><img src="../static/img/icons/dash4.svg" alt="img" /></span>
+          </div>
+          <div class="dash-widgetcontent">
+            <h5>
+              &#8377;<span class="counters" id="totalDueAmount"
+                >{{ cost_details.total_due }}</span
+              >
+            </h5>
+            <h6>Total Amount Due (Rs)</h6>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Purchase Trend Chart -->
+    <div class="row mt-4">
+      <div class="col-lg-12">
+        <div class="card">
+          <div
+            class="card-header d-flex justify-content-between align-items-center"
+          >
+            <h5 class="card-title mb-0">Purchase Trend</h5>
+
+            <div class="d-flex gap-2">
+              <!-- Filter Type -->
+              <select id="filterType" class="form-select w-auto">
+                <option value="year">Year</option>
+                <option value="month">Month</option>
+                <option value="custom">Custom Range</option>
+              </select>
+
+              <div id="yearFilter"></div>
+              <div id="monthFilter"></div>
+              <div id="customFilter"></div>
+
+              <!-- Year Selector -->
+              <select id="yearSelector" class="form-select w-auto"></select>
+
+              <!-- Month Selector (hidden by default) -->
+              <select
+                id="monthSelector"
+                class="form-select w-auto"
+                style="display: none"
+              >
+                <option value="1">January</option>
+                <option value="2">February</option>
+                <option value="3">March</option>
+                <option value="4">April</option>
+                <option value="5">May</option>
+                <option value="6">June</option>
+                <option value="7">July</option>
+                <option value="8">August</option>
+                <option value="9">September</option>
+                <option value="10">October</option>
+                <option value="11">November</option>
+                <option value="12">December</option>
+              </select>
+
+              <!-- Custom Date Range (hidden by default) -->
+              <input
+                type="date"
+                id="fromDate"
+                class="form-control"
+                style="display: none"
+              />
+              <input
+                type="date"
+                id="toDate"
+                class="form-control"
+                style="display: none"
+              />
+              <button
+                id="applyCustom"
+                class="btn btn-primary"
+                style="display: none"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+          <div class="card-body">
+            <canvas id="purchaseChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <!-- ===================== WELCOME SCREEN FOR NON-ADMINS ===================== -->
+    <div
+      class="d-flex justify-content-center align-items-center"
+      style="height: 70vh; flex-direction: column"
+    >
+      <img
+        src="../static/img/applogo.jpg"
+        alt="Logo"
+        width="120"
+        class="mb-4"
+      />
+      <h2 class="mb-3">Welcome, {{ user.username }} 👋</h2>
+      <p class="text-muted">
+        You are logged in as a
+        <b>{{ user.role.replace('_', ' ') | title }}</b>.<br />
+        Use the sidebar to manage your tasks such as
+        <b>Miscellaneous Expenses</b> and <b>Transfers</b>.
+      </p>
+    </div>
+    {% endif %}
+  </div>
 </div>
 
 {% if user.role == 'admin' %}
@@ -117,148 +193,172 @@
 <!-- Chart.js Library -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    document.addEventListener("DOMContentLoaded", function () {
-        let purchaseChart;
+  document.addEventListener("DOMContentLoaded", function () {
+    let purchaseChart;
 
+    function updateChart(labels, data) {
+      const ctx = document.getElementById("purchaseChart").getContext("2d");
+      if (purchaseChart) purchaseChart.destroy();
 
-        function updateChart(labels, data) {
-            const ctx = document.getElementById("purchaseChart").getContext("2d");
-            if (purchaseChart) purchaseChart.destroy();
+      purchaseChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: labels, // labels already contain day numbers for month-wise, or month names for yearly
+          datasets: [
+            {
+              label: "Purchase Amount (Rs)",
+              data: data,
+              borderColor: "#007bff",
+              backgroundColor: "rgba(0,123,255,0.2)",
+              fill: false,
+              tension: 0,
+              pointRadius: 5,
+              pointHoverRadius: 7,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            tooltip: {
+              enabled: true,
+              callbacks: {
+                label: function (context) {
+                  let value = context.raw; // Y-axis (amount)
+                  let xLabel = context.label; // X-axis label
 
+                  // Detect if it is monthly (numbers) and convert to date
+                  if (!isNaN(xLabel)) {
+                    // Get selected year & month from your dropdowns
+                    let year = document.getElementById("yearSelector").value;
+                    let month = document.getElementById("monthSelector").value;
+                    let day = xLabel.padStart(2, "0"); // pad day to 2 digits
+                    let monthNames = [
+                      "Jan",
+                      "Feb",
+                      "Mar",
+                      "Apr",
+                      "May",
+                      "Jun",
+                      "Jul",
+                      "Aug",
+                      "Sep",
+                      "Oct",
+                      "Nov",
+                      "Dec",
+                    ];
+                    let monthName = monthNames[month - 1];
+                    xLabel = `${day} ${monthName} ${year}`;
+                  }
 
-            purchaseChart = new Chart(ctx, {
-                type: "line",
-                data: {
-                    labels: labels, // labels already contain day numbers for month-wise, or month names for yearly
-                    datasets: [{
-                        label: "Purchase Amount (Rs)",
-                        data: data,
-                        borderColor: "#007bff",
-                        backgroundColor: "rgba(0,123,255,0.2)",
-                        fill: false,
-                        tension: 0,
-                        pointRadius: 5,
-                        pointHoverRadius: 7
-                    }]
+                  return ` ${xLabel} : ₹ ${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                 },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        tooltip: {
-                            enabled: true,
-                            callbacks: {
-                                label: function (context) {
-                                    let value = context.raw; // Y-axis (amount)
-                                    let xLabel = context.label; // X-axis label
+              },
+            },
+          },
+          scales: {
+            y: { beginAtZero: true },
+          },
+        },
+      });
+    }
 
+    function fetchPurchaseData(params) {
+      fetch(`/api/purchase_trend?${new URLSearchParams(params)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          let labels = [];
+          if (data.type === "yearly") labels = data.months;
+          else if (data.type === "monthly") labels = data.days;
+          else if (data.type === "custom") labels = data.dates;
 
-                                    // Detect if it is monthly (numbers) and convert to date
-                                    if (!isNaN(xLabel)) {
-                                        // Get selected year & month from your dropdowns
-                                        let year = document.getElementById("yearSelector").value;
-                                        let month = document.getElementById("monthSelector").value;
-                                        let day = xLabel.padStart(2, "0"); // pad day to 2 digits
-                                        let monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-                                        let monthName = monthNames[month - 1];
-                                        xLabel = `${day} ${monthName} ${year}`;
-                                    }
+          updateChart(labels, data.purchase_amounts);
+        })
+        .catch((err) => console.error("Error:", err));
+    }
 
+    // Filter type change
+    document
+      .getElementById("filterType")
+      .addEventListener("change", function () {
+        const type = this.value;
+        document.getElementById("yearSelector").style.display =
+          type === "year" ? "block" : "none";
+        document.getElementById("monthSelector").style.display =
+          type === "month" ? "block" : "none";
+        document.getElementById("fromDate").style.display =
+          type === "custom" ? "block" : "none";
+        document.getElementById("toDate").style.display =
+          type === "custom" ? "block" : "none";
+        document.getElementById("applyCustom").style.display =
+          type === "custom" ? "inline-block" : "none";
+      });
 
-                                    return ` ${xLabel} : ₹ ${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: { beginAtZero: true }
-                    }
-                }
-            });
+    // Year filter
+    document
+      .getElementById("yearSelector")
+      .addEventListener("change", function () {
+        fetchPurchaseData({ type: "year", year: this.value });
+      });
 
+    // Month filter
+    document
+      .getElementById("monthSelector")
+      .addEventListener("change", function () {
+        const year = document.getElementById("yearSelector").value;
+        fetchPurchaseData({ type: "month", year: year, month: this.value });
+      });
 
-        }
+    // Custom range
+    document
+      .getElementById("applyCustom")
+      .addEventListener("click", function () {
+        const from = document.getElementById("fromDate").value;
+        const to = document.getElementById("toDate").value;
+        fetchPurchaseData({ type: "custom", from: from, to: to });
+      });
 
-
-        function fetchPurchaseData(params) {
-            fetch(`/api/purchase_trend?${new URLSearchParams(params)}`)
-                .then(res => res.json())
-                .then(data => {
-                    let labels = [];
-                    if (data.type === "yearly") labels = data.months;
-                    else if (data.type === "monthly") labels = data.days;
-                    else if (data.type === "custom") labels = data.dates;
-
-
-                    updateChart(labels, data.purchase_amounts);
-                })
-                .catch(err => console.error("Error:", err));
-        }
-
-
-        // Filter type change
-        document.getElementById("filterType").addEventListener("change", function () {
-            const type = this.value;
-            document.getElementById("yearSelector").style.display = type === "year" ? "block" : "none";
-            document.getElementById("monthSelector").style.display = type === "month" ? "block" : "none";
-            document.getElementById("fromDate").style.display = type === "custom" ? "block" : "none";
-            document.getElementById("toDate").style.display = type === "custom" ? "block" : "none";
-            document.getElementById("applyCustom").style.display = type === "custom" ? "inline-block" : "none";
+    // Initial load → latest year
+    fetch("/api/years")
+      .then((res) => res.json())
+      .then((data) => {
+        const yearSelector = document.getElementById("yearSelector");
+        yearSelector.innerHTML = "";
+        data.years.forEach((y) => {
+          const opt = document.createElement("option");
+          opt.value = y;
+          opt.textContent = y;
+          yearSelector.appendChild(opt);
         });
-
-
-        // Year filter
-        document.getElementById("yearSelector").addEventListener("change", function () {
-            fetchPurchaseData({ type: "year", year: this.value });
-        });
-
-
-        // Month filter
-        document.getElementById("monthSelector").addEventListener("change", function () {
-            const year = document.getElementById("yearSelector").value;
-            fetchPurchaseData({ type: "month", year: year, month: this.value });
-        });
-
-
-        // Custom range
-        document.getElementById("applyCustom").addEventListener("click", function () {
-            const from = document.getElementById("fromDate").value;
-            const to = document.getElementById("toDate").value;
-            fetchPurchaseData({ type: "custom", from: from, to: to });
-        });
-
-
-        // Initial load → latest year
-        fetch("/api/years")
-            .then(res => res.json())
-            .then(data => {
-                const yearSelector = document.getElementById("yearSelector");
-                yearSelector.innerHTML = "";
-                data.years.forEach(y => {
-                    const opt = document.createElement("option");
-                    opt.value = y;
-                    opt.textContent = y;
-                    yearSelector.appendChild(opt);
-                });
-                if (data.years.length > 0) fetchPurchaseData({ type: "year", year: data.years[0] });
-            });
-    });
+        if (data.years.length > 0)
+          fetchPurchaseData({ type: "year", year: data.years[0] });
+      });
+  });
 </script>
 <script>
-    document.addEventListener("DOMContentLoaded", function () {
-        let amountElement = document.getElementById("totalPurchasedAmount");
-        let amount = parseFloat(amountElement.textContent);
-        amountElement.textContent = amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  document.addEventListener("DOMContentLoaded", function () {
+    let amountElement = document.getElementById("totalPurchasedAmount");
+    let amount = parseFloat(amountElement.textContent);
+    amountElement.textContent = amount.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     });
-    document.addEventListener("DOMContentLoaded", function () {
-        let amountElement = document.getElementById("totalPaidAmount");
-        let amount = parseFloat(amountElement.textContent);
-        amountElement.textContent = amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  });
+  document.addEventListener("DOMContentLoaded", function () {
+    let amountElement = document.getElementById("totalPaidAmount");
+    let amount = parseFloat(amountElement.textContent);
+    amountElement.textContent = amount.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     });
-    document.addEventListener("DOMContentLoaded", function () {
-        let amountElement = document.getElementById("totalDueAmount");
-        let amount = parseFloat(amountElement.textContent);
-        amountElement.textContent = amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  });
+  document.addEventListener("DOMContentLoaded", function () {
+    let amountElement = document.getElementById("totalDueAmount");
+    let amount = parseFloat(amountElement.textContent);
+    amountElement.textContent = amount.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     });
+  });
 </script>
-{% endif %}
-{% endblock %}
+{% endif %} {% endblock %}

@@ -1,5 +1,4 @@
-{% extends 'base.html' %}
-{% block content %}
+{% extends 'base.html' %} {% block content %}
 <div class="page-wrapper">
   <div class="content">
     <div class="page-header">
@@ -8,7 +7,7 @@
       </div>
     </div>
 
-
+    <!-- prettier-ignore -->
     <form action="/addmiscitem" method="POST">
       <div class="card">
         <div class="card-body">
@@ -83,6 +82,28 @@
               </div>
             </div>
 
+            <!-- Payment Method -->
+<div class="col-lg-6 col-sm-6 col-12">
+  <div class="form-group">
+    <label>Payment Method</label>
+
+    {% if is_branch_manager %}
+      <!-- Branch Manager: forced CASH -->
+      <select name="payment_method" class="form-control" disabled>
+        <option value="cash" selected>Cash</option>
+      </select>
+      <!-- hidden input so value still submits -->
+      <input type="hidden" name="payment_method" value="cash">
+    {% else %}
+      <!-- Admin / others -->
+      <select name="payment_method" class="form-control" required>
+        <option value="cash" selected>Cash</option>
+        <option value="upi">UPI</option>
+      </select>
+    {% endif %}
+  </div>
+</div>
+
 
             {% if user.role == 'admin' %}
             <!-- Manual Date -->
@@ -128,106 +149,100 @@
               <button type="submit" class="btn btn-submit me-2">Submit</button>
               <a href="/miscitemlist" class="btn btn-cancel">Cancel</a>
             </div>
-
-
           </div>
         </div>
       </div>
     </form>
-
-
   </div>
 </div>
-{% endblock %}
-
-
-{% block scripts %}
+{% endblock %} {% block scripts %}
 <script>
-  document.getElementById('type_of_expense').addEventListener('change', function () {
-    let selectedOption = this.options[this.selectedIndex];
-    let hasSubcategory = selectedOption.getAttribute('data-has-subcategory') === '1';
-    let expenseTypeId = selectedOption.value;
+  document
+    .getElementById("type_of_expense")
+    .addEventListener("change", function () {
+      let selectedOption = this.options[this.selectedIndex];
+      let hasSubcategory =
+        selectedOption.getAttribute("data-has-subcategory") === "1";
+      let expenseTypeId = selectedOption.value;
 
+      let subCatDiv = document.getElementById("subcategory_div");
+      let subCatSelect = document.getElementById("sub_category");
+      let loadingDiv = document.getElementById("subcategory_loading");
 
-    let subCatDiv = document.getElementById('subcategory_div');
-    let subCatSelect = document.getElementById('sub_category');
-    let loadingDiv = document.getElementById('subcategory_loading');
+      // Clear previous subcategories
+      subCatSelect.innerHTML = '<option value="">Select Subcategory</option>';
 
+      if (hasSubcategory && expenseTypeId) {
+        loadingDiv.style.display = "block";
+        subCatDiv.style.display = "block";
+        subCatSelect.disabled = true;
 
-    // Clear previous subcategories
-    subCatSelect.innerHTML = '<option value="">Select Subcategory</option>';
+        fetch(`/get-subcategories/${expenseTypeId}`)
+          .then((response) => {
+            if (!response.ok)
+              throw new Error(
+                `Network response was not ok: ${response.status}`,
+              );
+            return response.json();
+          })
+          .then((data) => {
+            loadingDiv.style.display = "none";
+            subCatSelect.disabled = false;
 
-
-    if (hasSubcategory && expenseTypeId) {
-      loadingDiv.style.display = 'block';
-      subCatDiv.style.display = 'block';
-      subCatSelect.disabled = true;
-
-
-      fetch(`/get-subcategories/${expenseTypeId}`)
-        .then(response => {
-          if (!response.ok) throw new Error(`Network response was not ok: ${response.status}`);
-          return response.json();
-        })
-        .then(data => {
-          loadingDiv.style.display = 'none';
-          subCatSelect.disabled = false;
-
-
-          if (data.subcategories && data.subcategories.length > 0) {
-            data.subcategories.forEach(function (subcategory) {
-              let opt = document.createElement('option');
-              opt.value = subcategory.id;
-              opt.textContent = subcategory.name;
+            if (data.subcategories && data.subcategories.length > 0) {
+              data.subcategories.forEach(function (subcategory) {
+                let opt = document.createElement("option");
+                opt.value = subcategory.id;
+                opt.textContent = subcategory.name;
+                subCatSelect.appendChild(opt);
+              });
+            } else {
+              let opt = document.createElement("option");
+              opt.value = "";
+              opt.textContent = "No subcategories available";
+              opt.disabled = true;
               subCatSelect.appendChild(opt);
-            });
-          } else {
-            let opt = document.createElement('option');
-            opt.value = '';
-            opt.textContent = 'No subcategories available';
+            }
+          })
+          .catch((error) => {
+            console.error("Error fetching subcategories:", error);
+            loadingDiv.style.display = "none";
+            subCatSelect.disabled = false;
+
+            let opt = document.createElement("option");
+            opt.value = "";
+            opt.textContent = "Error loading subcategories";
             opt.disabled = true;
             subCatSelect.appendChild(opt);
-          }
-        })
-        .catch(error => {
-          console.error('Error fetching subcategories:', error);
-          loadingDiv.style.display = 'none';
-          subCatSelect.disabled = false;
-
-
-          let opt = document.createElement('option');
-          opt.value = '';
-          opt.textContent = 'Error loading subcategories';
-          opt.disabled = true;
-          subCatSelect.appendChild(opt);
-        });
-    } else {
-      subCatDiv.style.display = 'none';
-      loadingDiv.style.display = 'none';
-    }
-  });
-
+          });
+      } else {
+        subCatDiv.style.display = "none";
+        loadingDiv.style.display = "none";
+      }
+    });
 
   // Auto-dismiss flash messages after 5 seconds
-  document.addEventListener('DOMContentLoaded', function () {
+  document.addEventListener("DOMContentLoaded", function () {
     setTimeout(function () {
-      let alerts = document.querySelectorAll('.alert');
+      let alerts = document.querySelectorAll(".alert");
       alerts.forEach(function (alert) {
-        let closeBtn = alert.querySelector('.btn-close');
+        let closeBtn = alert.querySelector(".btn-close");
         if (closeBtn) closeBtn.click();
       });
     }, 5000);
   });
 
-
   // Debug function to check data attributes
-  document.addEventListener('DOMContentLoaded', function () {
-    const expenseTypeSelect = document.getElementById('type_of_expense');
-    console.log('Expense Type Options:', Array.from(expenseTypeSelect.options).map(opt => ({
-      text: opt.textContent,
-      value: opt.value,
-      hasSubcategory: opt.getAttribute('data-has-subcategory')
-    })));
+  document.addEventListener("DOMContentLoaded", function () {
+    const expenseTypeSelect = document.getElementById("type_of_expense");
+    console.log(
+      "Expense Type Options:",
+      Array.from(expenseTypeSelect.options).map((opt) => ({
+        text: opt.textContent,
+        value: opt.value,
+        hasSubcategory: opt.getAttribute("data-has-subcategory"),
+      })),
+    );
   });
 </script>
 {% endblock %}

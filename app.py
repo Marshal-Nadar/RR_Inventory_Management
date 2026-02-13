@@ -226,13 +226,53 @@ def signup():
         return redirect("/signup")
     return render_template("signup.html")
 
+def get_all_time_cash_upi():
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT
+          COALESCE(nbs.nbs_cash,0) + COALESCE(misc.misc_cash,0) AS total_cash,
+          COALESCE(nbs.nbs_upi,0)  + COALESCE(misc.misc_upi,0)  AS total_upi,
+          (COALESCE(nbs.nbs_cash,0) + COALESCE(misc.misc_cash,0)
+         + COALESCE(nbs.nbs_upi,0)  + COALESCE(misc.misc_upi,0)) AS total_balance
+        FROM
+        (
+            SELECT 
+                SUM(cash) AS nbs_cash,
+                SUM(upi)  AS nbs_upi
+            FROM nbs_daily_reports
+        ) nbs,
+        (
+            SELECT
+                SUM(CASE WHEN payment_method='cash' THEN cost ELSE 0 END) AS misc_cash,
+                SUM(CASE WHEN payment_method='upi' THEN cost ELSE 0 END)  AS misc_upi
+            FROM miscellaneous_items
+            WHERE status='active'
+        ) misc
+    """)
+
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row
 
 @app.route("/index", methods=["GET", "POST"])
 def index():
     if "user" not in session:
         return redirect("/login")
+
     cost_details = get_total_cost_stats()[0]
-    return render_template("index.html", user=session["user"], cost_details=cost_details)
+    cash_upi = get_all_time_cash_upi()
+
+    return render_template(
+        "index.html",
+        user=session["user"],
+        cost_details=cost_details,
+        total_cash=cash_upi["total_cash"],
+        total_upi=cash_upi["total_upi"],
+        total_balance=cash_upi["total_balance"]
+    )
 
 
 @app.route('/api/years', methods=['GET'])
@@ -429,6 +469,8 @@ def addmiscitem():
     role = user.get("role")
     email = user.get("email")
 
+    is_branch_manager = role == "branch_manager"
+
     selected_restaurant_id = None
     disable_restaurant_dropdown = False
 
@@ -455,6 +497,10 @@ def addmiscitem():
         cost = request.form["cost"].strip()
         notes = request.form.get("notes", "").strip()
         manual_date_str = request.form.get("manual_date", "").strip()
+        payment_method = request.form.get("payment_method", "cash").strip()
+
+        if is_branch_manager:
+            payment_method = "cash"
 
         # Force restaurant_id if dropdown disabled (security)
         if disable_restaurant_dropdown and selected_restaurant_id:
@@ -481,14 +527,12 @@ def addmiscitem():
         created_at_str = current_datetime_ist.strftime("%Y-%m-%d %H:%M:%S")
         updated_at_str = current_datetime_ist.strftime("%Y-%m-%d %H:%M:%S")
 
-        insert_query = """
-        INSERT INTO miscellaneous_items
-        (expense_type_id, expense_subcategory_id, restaurant_id, branch_manager, cost, notes, manual_date, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
+        insert_query = """INSERT INTO miscellaneous_items
+(expense_type_id, expense_subcategory_id, restaurant_id, branch_manager, cost, payment_method, notes, manual_date, created_at, updated_at)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+"""
         if execute_query(insert_query, (
-            expense_type_id, expense_subcategory_id, restaurant_id, branch_manager, cost, notes,
-            manual_date_str, created_at_str, updated_at_str
+            expense_type_id, expense_subcategory_id, restaurant_id, branch_manager, cost, payment_method, notes, manual_date_str, created_at_str, updated_at_str
         )):
             flash("Miscellaneous item added successfully!", "success")
             update_nbs_misc_expense(restaurant_id, date.today())
@@ -503,7 +547,8 @@ def addmiscitem():
         restaurants=restaurants,
         expense_types=expense_types,
         selected_restaurant_id=selected_restaurant_id,
-        disable_restaurant_dropdown=disable_restaurant_dropdown
+        disable_restaurant_dropdown=disable_restaurant_dropdown,
+        is_branch_manager=is_branch_manager
     )
 
 
@@ -548,6 +593,7 @@ def miscitemlist():
         et.type_name AS type_of_expense,
         es.subcategory_name AS sub_category,
         mi.cost,
+        mi.payment_method,
         mi.notes,
         mi.restaurant_id,
         r.restaurantname,
@@ -630,6 +676,7 @@ def update_misc_item(item_id):
         restaurant_id = data.get("restaurant_id") or None
         branch_manager = data.get("branch_manager", "").strip()
         cost = data.get("cost")
+        payment_method = data.get("payment_method", "cash")
         notes = data.get("notes", "").strip()
         manual_date_str = data.get("manual_date", "").strip()
 
@@ -661,6 +708,7 @@ def update_misc_item(item_id):
             restaurant_id = %s, 
             branch_manager = %s, 
             cost = %s, 
+            payment_method = %s,
             notes = %s, 
             manual_date = %s, 
             updated_at = %s
@@ -670,7 +718,7 @@ def update_misc_item(item_id):
         # Execute update
         cursor.execute(update_query, (
             expense_type_id, expense_subcategory_id, restaurant_id, 
-            branch_manager, cost, notes, manual_date_str, 
+            branch_manager, cost, payment_method, notes, manual_date_str, 
             updated_at_str, item_id
         ))
 
@@ -748,11 +796,13 @@ def misc_item_report():
     expense_type_id = request.args.get("expense_type_id")
     expense_subcategory_id = request.args.get("expense_subcategory_id")
     restaurant_id = request.args.get("restaurant_id")  # ← NEW
+    payment_method = request.args.get("payment_method")
 
     # Base query
     query = """
         SELECT
             mi.*,
+            mi.payment_method,
             et.type_name AS type_of_expense,
             es.subcategory_name AS sub_category,
             r.restaurantname AS branch_name,
@@ -784,6 +834,10 @@ def misc_item_report():
     if date_to:
         query += " AND DATE(COALESCE(mi.manual_date, mi.created_at)) <= %s"
         params.append(date_to)
+    
+    if payment_method:
+        query += " AND mi.payment_method = %s"
+        params.append(payment_method)
 
     # Restrict non-admin users
     if user["role"] not in ["admin", "branch_manager", "store_manager"]:
@@ -2294,12 +2348,13 @@ def process_payments():
                     )
                     
                     # DEDUCT FROM NBS REPORT (Only for cash and UPI payments)
-                    if payment_detail["mode_of_payment"].lower() in ['cash', 'upi']:
+                    if payment_detail["mode_of_payment"].lower() in ['cash', 'upi', 'bank_transfer', 'cheque']:
                         deduct_vendor_payment_from_nbs(
                             vendor_id=vendor_id,
                             amount=payment_detail["pay_amount"],
                             payment_mode=payment_detail["mode_of_payment"],
-                            payment_date=payment_detail["date_of_payment"]
+                            payment_date=payment_detail["date_of_payment"],
+                            invoice_number=payment_detail["invoice_number"]
                         )
             
             connection.commit()
@@ -4536,99 +4591,70 @@ def edit_nbs_report(report_id):
         selected_restaurant_id=report['restaurant_id']
     )
 
-def deduct_vendor_payment_from_nbs(vendor_id, amount, payment_mode, payment_date):
-    try:
-        connection = get_db_connection()
-        cursor = connection.cursor(dictionary=True)
-        
-        # FIXED: Use a central/main branch ID for all deductions
-        # Change 1 to your actual main restaurant_id (check your restaurant table)
-        restaurant_id = 1  
-        
-        print(f"DEBUG: NBS Deduction - Vendor:{vendor_id} | Amt:{amount} | Mode:{payment_mode} | Date:{payment_date} | Branch:{restaurant_id}")
-        
-        # Check for existing report on this date + branch (limit 1 to avoid multiples confusion)
-        cursor.execute("""
-            SELECT id, cash, upi, net_counter 
-            FROM nbs_daily_reports 
-            WHERE report_date = %s AND restaurant_id = %s
-            LIMIT 1
-        """, (payment_date, restaurant_id))
-        
-        existing = cursor.fetchone()
-        
-        if existing:
-            # Update existing
-            new_cash = float(existing['cash'] or 0)
-            new_upi  = float(existing['upi'] or 0)
-            
-            if payment_mode.lower() == 'cash':
-                new_cash -= amount
-            elif payment_mode.lower() == 'upi':
-                new_upi -= amount
-            
-            # Recalculate net_counter properly
-            # Note: This assumes other fields are already set; adjust if needed
-            net_counter = new_upi + new_cash + (existing.get('r_expense') or 0) + (existing.get('swiggy') or 0) + (existing.get('zomato') or 0)
-            
-            cursor.execute("""
-                UPDATE nbs_daily_reports 
-                SET 
-                    cash = %s,
-                    upi = %s,
-                    net_counter = %s,
-                    difference = net_counter - net_sales,  -- recalculate diff
-                    vendor_payment_note = CONCAT(IFNULL(vendor_payment_note, ''), %s),
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = %s
-            """, (
-                new_cash, new_upi, net_counter,
-                f"\nVendor {vendor_id} {payment_mode.upper()} -₹{amount}",
-                existing['id']
-            ))
-            print(f"DEBUG: Updated existing row ID {existing['id']} → Cash:{new_cash} UPI:{new_upi}")
-            
-        else:
-            # Create new deduction-only row
-            cash_val = -amount if payment_mode.lower() == 'cash' else 0
-            upi_val  = -amount if payment_mode.lower() == 'upi' else 0
-            
-            # Minimal row - only counter affected
-            cursor.execute("""
-                INSERT INTO nbs_daily_reports (
-                    report_date, restaurant_id,
-                    cash, upi,
-                    total_income, net_sales, net_counter, difference,
-                    is_vendor_payment, vendor_payment_note,
-                    created_at, updated_at
-                ) VALUES (
-                    %s, %s,
-                    %s, %s,
-                    0, 0, %s, %s,
-                    1, %s,
-                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                )
-            """, (
-                payment_date, restaurant_id,
-                cash_val, upi_val,
-                cash_val + upi_val,  # net_counter = cash + upi (other 0)
-                cash_val + upi_val,  # difference = net_counter - net_sales (0 sales)
-                f"Vendor {vendor_id} deduction - {payment_mode.upper()} -₹{amount}"
-            ))
-            print(f"DEBUG: Created new deduction row → Cash:{cash_val} UPI:{upi_val}")
-        
-        connection.commit()
-        return True
-        
-    except Exception as e:
-        print(f"ERROR in deduction: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        connection.rollback()
-        return False
-    finally:
-        cursor.close()
-        connection.close()
+def normalize_mode(mode):
+    mode = mode.lower().strip()
+
+    if mode == "cash":
+        return "cash"
+
+    if mode in ("upi", "bank_transfer", "cheque"):
+        return "upi"
+
+    return None
+
+def deduct_vendor_payment_from_nbs(vendor_id, amount, payment_mode, payment_date, invoice_number):
+    mode = normalize_mode(payment_mode)
+    if not mode:
+        return  # ignore unknown modes
+
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
+
+    # Find nearest NBS report
+    cur.execute("""
+        SELECT id, cash, upi
+        FROM nbs_daily_reports
+        WHERE report_date <= %s
+        ORDER BY report_date DESC
+        LIMIT 1
+    """, (payment_date,))
+
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return
+
+    if mode == "cash":
+        new_value = max(row["cash"] - amount, 0)
+        cur.execute("""
+            UPDATE nbs_daily_reports
+            SET cash = %s
+            WHERE id = %s
+        """, (new_value, row["id"]))
+
+    else:  # UPI
+        new_value = max(row["upi"] - amount, 0)
+        cur.execute("""
+            UPDATE nbs_daily_reports
+            SET upi = %s
+            WHERE id = %s
+        """, (new_value, row["id"]))
+
+    # 🔹 LOG ENTRY
+    cur.execute("""
+    INSERT INTO vendor_cash_deductions
+    (vendor_id, amount, payment_mode, invoice_number)
+    VALUES (%s, %s, %s, %s)
+    """, (
+        vendor_id,
+        amount,
+        payment_mode,   # 'cash' or 'upi'
+        invoice_number
+    ))
+
+    conn.commit()
+    cur.close()
+    conn.close()
 
 @app.route('/nbs-reports', methods=['GET', 'POST'])
 def nbs_reports():
@@ -4739,25 +4765,6 @@ def nbs_reports():
         total_swiggy_sum += swiggy
         total_zomato_sum += zomato
 
-    # --- SIMPLE: Get Cash & UPI Totals DIRECTLY from NBS reports ---
-    cursor.execute(f"""
-    SELECT 
-        COALESCE(SUM(cash), 0) AS total_cash,
-        COALESCE(SUM(upi), 0) AS total_upi,
-        COALESCE(SUM(r_expense), 0) AS total_r_expense
-    {base_query}
-    """, params)
-
-    totals_data = cursor.fetchone()
-
-    total_cash_raw = float(totals_data['total_cash'])
-    total_upi = float(totals_data['total_upi'])
-    total_r_expense = float(totals_data['total_r_expense'])
-
-    # Deduct miscellaneous expenses from cash (this is what you want!)
-    total_cash_filtered = total_cash_raw - total_r_expense
-    total_counter = total_cash_filtered + total_upi
-
     cursor.close()
     conn.close()
 
@@ -4780,10 +4787,7 @@ def nbs_reports():
         start_date=start_date,
         end_date=end_date,
         page=page,
-        total_pages=total_pages,
-        total_cash_filtered=total_cash_filtered,
-        total_upi_filtered=total_upi,
-        total_counter_filtered=total_counter
+        total_pages=total_pages
     )
 
 
