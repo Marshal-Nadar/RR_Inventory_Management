@@ -1,17 +1,33 @@
-{% extends 'base.html' %}
-
-{% block content %}
+{% extends 'base.html' %} {% block content %}
 <style>
-  .badge-pending { background-color: #ffc107; color: #000; }
-  .badge-partial { background-color: #17a2b8; }
-  .badge-completed { background-color: #28a745; }
-  .badge-confirmed { background-color: #007bff; }
-  .badge-preparing { background-color: #fd7e14; }
-  .badge-ready { background-color: #20c997; }
-  .badge-delivered { background-color: #6c757d; }
-  .badge-cancelled { background-color: #dc3545; }
+  .badge-pending {
+    background-color: #ffc107;
+    color: #000;
+  }
+  .badge-partial {
+    background-color: #17a2b8;
+  }
+  .badge-completed {
+    background-color: #28a745;
+  }
+  .badge-confirmed {
+    background-color: #007bff;
+  }
+  .badge-preparing {
+    background-color: #fd7e14;
+  }
+  .badge-ready {
+    background-color: #20c997;
+  }
+  .badge-delivered {
+    background-color: #6c757d;
+  }
+  .badge-cancelled {
+    background-color: #dc3545;
+  }
 </style>
 
+<!-- prettier-ignore -->
 <div class="page-wrapper">
   <div class="content">
     <div class="page-header d-flex justify-content-between align-items-center">
@@ -186,11 +202,19 @@
                 <td>₹{{ "%.2f"|format(order.amount_paid) }}</td>
                 <td>₹{{ "%.2f"|format(order.pending_balance) }}</td>
                 <td>
-                  {{ order.delivery_date.strftime('%d/%m/%y') }}<br>
-                  {% if order.delivery_time %}
-                    {{ (datetime.min + order.delivery_time).time().strftime('%I:%M %p') }}
-                  {% else %}N/A{% endif %}
-                </td>
+  {% if order.delivery_date %}
+    {{ order.delivery_date.strftime('%d/%m/%y') }}
+  {% else %}
+    N/A
+  {% endif %}
+  <br>
+
+  {% if order.delivery_time %}
+    {{ (datetime.min + order.delivery_time).time().strftime('%I:%M %p') }}
+  {% else %}
+    N/A
+  {% endif %}
+</td>
                 <td><span class="badge badge-{{ order.payment_status }}">{{ order.payment_status|upper }}</span></td>
                 <td><span class="badge badge-{{ order.order_status }}">{{ order.order_status|upper }}</span></td>
                 <td>
@@ -247,68 +271,86 @@
 </div>
 
 <script>
-function printAllOrders() {
-  // Collect current filter parameters
-  const params = new URLSearchParams(window.location.search);
-  
-  // Show loading state
-  const btn = event.target;
-  const originalText = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Preparing...';
+  function printAllOrders() {
+    // Collect current filter parameters
+    const params = new URLSearchParams(window.location.search);
 
-  fetch('/prebooking-list-print-all?' + params.toString())
-    .then(response => response.json())
-    .then(data => {
-      const orders = data.orders;
-      const summary = data.summary;
-      const filters = data.filters;
+    // Show loading state
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Preparing...';
 
-      // Build filter text
-      let filterText = "";
-      if (filters.search || filters.status || filters.payment || filters.start_date || filters.end_date) {
-        filterText = "<strong>Applied Filters:</strong> ";
-        const parts = [];
-        if (filters.search) parts.push(`Search: "${filters.search}"`);
-        if (filters.status) parts.push(`Status: ${filters.status.charAt(0).toUpperCase() + filters.status.slice(1)}`);
-        if (filters.payment) parts.push(`Payment: ${filters.payment.charAt(0).toUpperCase() + filters.payment.slice(1)}`);
-        if (filters.start_date) parts.push(`From: ${filters.start_date}`);
-        if (filters.end_date) parts.push(`To: ${filters.end_date}`);
-        filterText += parts.join(" | ");
-      }
+    fetch("/prebooking-list-print-all?" + params.toString())
+      .then((response) => response.json())
+      .then((data) => {
+        const orders = data.orders;
+        const summary = data.summary;
+        const filters = data.filters;
 
-      // Build table rows dynamically
-      let tableRows = "";
-      if (orders.length === 0) {
-        tableRows = `<tr><td colspan="10" style="text-align:center;">No orders found</td></tr>`;
-      } else {
-        orders.forEach(order => {
-          const productsHtml = order.product_names
-            .split(', ')
-            .map(p => p.trim())
-            .join('<br>');
-          
-          const deliveryTime = order.delivery_time 
-    ? new Date(`1970-01-01T${order.delivery_time}:00`).toLocaleTimeString('en-US', { 
-        hour: '2-digit', minute: '2-digit', hour12: true 
-      })
-    : 'N/A';
+        // Build filter text
+        let filterText = "";
+        if (
+          filters.search ||
+          filters.status ||
+          filters.payment ||
+          filters.start_date ||
+          filters.end_date
+        ) {
+          filterText = "<strong>Applied Filters:</strong> ";
+          const parts = [];
+          if (filters.search) parts.push(`Search: "${filters.search}"`);
+          if (filters.status)
+            parts.push(
+              `Status: ${filters.status.charAt(0).toUpperCase() + filters.status.slice(1)}`,
+            );
+          if (filters.payment)
+            parts.push(
+              `Payment: ${filters.payment.charAt(0).toUpperCase() + filters.payment.slice(1)}`,
+            );
+          if (filters.start_date) parts.push(`From: ${filters.start_date}`);
+          if (filters.end_date) parts.push(`To: ${filters.end_date}`);
+          filterText += parts.join(" | ");
+        }
 
-const deliveryDate = order.delivery_date 
-    ? new Date(order.delivery_date + 'T00:00:00').toLocaleDateString('en-GB')
-    : '';
+        // Build table rows dynamically
+        let tableRows = "";
+        if (orders.length === 0) {
+          tableRows = `<tr><td colspan="10" style="text-align:center;">No orders found</td></tr>`;
+        } else {
+          orders.forEach((order) => {
+            const productsHtml = order.product_names
+              .split(", ")
+              .map((p) => p.trim())
+              .join("<br>");
 
-          tableRows += `
+            const deliveryTime = order.delivery_time
+              ? new Date(
+                  `1970-01-01T${order.delivery_time}:00`,
+                ).toLocaleTimeString("en-US", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: true,
+                })
+              : "N/A";
+
+            const deliveryDate = order.delivery_date
+              ? new Date(order.delivery_date + "T00:00:00").toLocaleDateString(
+                  "en-GB",
+                )
+              : "";
+
+            tableRows += `
             <tr>
               <td style="font-weight:bold;">${order.id}</td>
-              <td>${order.username || ''}</td>
-              <td>${order.mobile_number || ''}</td>
+              <td>${order.username || ""}</td>
+              <td>${order.mobile_number || ""}</td>
               <td style="font-size:10.5px;">${productsHtml}</td>
               <td style="text-align:right;">₹${parseFloat(order.final_amount || 0).toFixed(2)}</td>
               <td style="text-align:right;">₹${parseFloat(order.amount_paid || 0).toFixed(2)}</td>
               <td style="text-align:right;">₹${parseFloat(order.pending_balance || 0).toFixed(2)}</td>
               <td style="text-align:center;">
-                ${new Date(order.delivery_date).toLocaleDateString('en-GB')}<br>${deliveryTime}
+                ${new Date(order.delivery_date).toLocaleDateString("en-GB")}<br>${deliveryTime}
               </td>
               <td style="text-align:center;">
                 <span class="badge badge-${order.payment_status}">${order.payment_status.toUpperCase()}</span>
@@ -317,14 +359,17 @@ const deliveryDate = order.delivery_date
                 <span class="badge badge-${order.order_status}">${order.order_status.toUpperCase()}</span>
               </td>
             </tr>`;
+          });
+        }
+
+        const currentDate = new Date();
+        const printDate = currentDate.toLocaleDateString("en-GB");
+        const printTime = currentDate.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
         });
-      }
 
-      const currentDate = new Date();
-      const printDate = currentDate.toLocaleDateString('en-GB');
-      const printTime = currentDate.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-
-      const printContent = `<!DOCTYPE html>
+        const printContent = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -375,7 +420,7 @@ const deliveryDate = order.delivery_date
 
   <div class="header-underline"></div>
 
-  ${filterText ? `<div class="filters">${filterText}</div>` : ''}
+  ${filterText ? `<div class="filters">${filterText}</div>` : ""}
 
   <table>
     <thead>
@@ -411,63 +456,63 @@ const deliveryDate = order.delivery_date
 </body>
 </html>`;
 
-      // Print using iframe (same method as current print)
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'absolute';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = 'none';
-      document.body.appendChild(iframe);
+        // Print using iframe (same method as current print)
+        const iframe = document.createElement("iframe");
+        iframe.style.position = "absolute";
+        iframe.style.width = "0";
+        iframe.style.height = "0";
+        iframe.style.border = "none";
+        document.body.appendChild(iframe);
 
-      const doc = iframe.contentWindow.document;
-      doc.open();
-      doc.write(printContent);
-      doc.close();
+        const doc = iframe.contentWindow.document;
+        doc.open();
+        doc.write(printContent);
+        doc.close();
 
-      iframe.onload = () => {
+        iframe.onload = () => {
+          setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+          }, 600);
+        };
+
         setTimeout(() => {
-          iframe.contentWindow.focus();
-          iframe.contentWindow.print();
-        }, 600);
-      };
-
-      setTimeout(() => {
-        if (document.body.contains(iframe)) {
-          document.body.removeChild(iframe);
-        }
-      }, 10000);
-    })
-    .catch(err => {
-      console.error(err);
-      alert("Error preparing print. Please try again.");
-    })
-    .finally(() => {
-      btn.disabled = false;
-      btn.innerHTML = originalText;
-    });
-}
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+        }, 10000);
+      })
+      .catch((err) => {
+        console.error(err);
+        alert("Error preparing print. Please try again.");
+      })
+      .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+      });
+  }
 </script>
 
 <script>
-function resetFilters() {
-  // Get the current URL without query parameters
-  const baseUrl = window.location.origin + window.location.pathname;
-  
-  // Redirect to the base URL (without any filters)
-  window.location.href = baseUrl;
-}
+  function resetFilters() {
+    // Get the current URL without query parameters
+    const baseUrl = window.location.origin + window.location.pathname;
 
-{% if user.role == 'admin' %}
-function confirmDelete(orderId, orderNumber) {
-  if (confirm(`Are you sure you want to delete Order #${orderNumber}?\nThis action cannot be undone.`)) {
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = `/delete-prebooking/${orderId}`;
-    document.body.appendChild(form);
-    form.submit();
+    // Redirect to the base URL (without any filters)
+    window.location.href = baseUrl;
   }
-}
-{% endif %}
+
+  {% if user.role == 'admin' %}
+  function confirmDelete(orderId, orderNumber) {
+    if (confirm(`Are you sure you want to delete Order #${orderNumber}?\nThis action cannot be undone.`)) {
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = `/delete-prebooking/${orderId}`;
+      document.body.appendChild(form);
+      form.submit();
+    }
+  }
+  {% endif %}
 </script>
 
 {% endblock %}

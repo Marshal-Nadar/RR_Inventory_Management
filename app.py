@@ -1,5 +1,5 @@
 import pandas as pd
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 import logging
 from flask import Flask, render_template, request, redirect, flash, session, url_for, jsonify
 from markupsafe import Markup
@@ -94,6 +94,8 @@ def get_current_datetime():
     formatted_datetime_ist = current_time_ist.strftime("%Y-%m-%d %H:%M:%S")
     return formatted_datetime_ist
 
+def D(val):
+    return Decimal(str(val)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 @app.route("/")
 @app.route("/login", methods=["GET", "POST"])
@@ -2323,35 +2325,41 @@ def process_payments():
             
             # Process each payment
             for payment_detail in request.json.get("payments", []):
-                if payment_detail["pay_amount"] > 0:
+                pay_amount = D(payment_detail["pay_amount"])
+
+                if pay_amount > 0:
                     paid_values.append(payment_detail)
-                    
-                    # Update vendor payment tracker
+
                     cursor.execute(
                         """
                         INSERT INTO vendor_payment_tracker (vendor_id, invoice_number, purchase_date, total_paid)
                         VALUES (%s, %s, %s, %s)
                         ON DUPLICATE KEY UPDATE total_paid = total_paid + %s
                         """,
-                        (vendor_id, payment_detail["invoice_number"], payment_detail["purchase_date"],
-                         payment_detail["pay_amount"], payment_detail["pay_amount"])
+                        (vendor_id,
+                        payment_detail["invoice_number"],
+                        payment_detail["purchase_date"],
+                        pay_amount, pay_amount)
                     )
-                    
-                    # Record payment
+
                     cursor.execute(
                         """
-                        INSERT INTO payment_records (vendor_id, invoice_number, purchase_date, amount_paid, mode_of_payment, paid_on)
+                        INSERT INTO payment_records
+                        (vendor_id, invoice_number, purchase_date, amount_paid, mode_of_payment, paid_on)
                         VALUES (%s, %s, %s, %s, %s, %s)
                         """,
-                        (vendor_id, payment_detail["invoice_number"], payment_detail["purchase_date"],
-                         payment_detail["pay_amount"], payment_detail["mode_of_payment"], payment_detail["date_of_payment"])
+                        (vendor_id,
+                        payment_detail["invoice_number"],
+                        payment_detail["purchase_date"],
+                        pay_amount,
+                        payment_detail["mode_of_payment"],
+                        payment_detail["date_of_payment"])
                     )
-                    
-                    # DEDUCT FROM NBS REPORT (Only for cash and UPI payments)
-                    if payment_detail["mode_of_payment"].lower() in ['cash', 'upi', 'bank_transfer', 'cheque']:
+
+                    if payment_detail["mode_of_payment"].lower() in ['cash','upi','bank_transfer','cheque']:
                         deduct_vendor_payment_from_nbs(
                             vendor_id=vendor_id,
-                            amount=payment_detail["pay_amount"],
+                            amount=pay_amount,
                             payment_mode=payment_detail["mode_of_payment"],
                             payment_date=payment_detail["date_of_payment"],
                             invoice_number=payment_detail["invoice_number"]
@@ -3059,8 +3067,6 @@ def get_raw_material_transfers():
 
 #     finally:
 #         conn.close()
-
-from decimal import Decimal, ROUND_HALF_UP
 
 def clamp_decimal(value, max_value, scale):
     """Clamp value within [0, max_value] and round to given scale"""
