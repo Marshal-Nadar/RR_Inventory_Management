@@ -234,10 +234,10 @@ def get_all_time_cash_upi():
 
     cur.execute("""
         SELECT
-          COALESCE(nbs.nbs_cash,0) + COALESCE(misc.misc_cash,0) AS total_cash,
-          COALESCE(nbs.nbs_upi,0)  + COALESCE(misc.misc_upi,0)  AS total_upi,
-          (COALESCE(nbs.nbs_cash,0) + COALESCE(misc.misc_cash,0)
-         + COALESCE(nbs.nbs_upi,0)  + COALESCE(misc.misc_upi,0)) AS total_balance
+          COALESCE(nbs.nbs_cash,0) - COALESCE(misc.misc_cash,0) AS total_cash,
+          COALESCE(nbs.nbs_upi,0)  - COALESCE(misc.misc_upi,0)  AS total_upi,
+          (COALESCE(nbs.nbs_cash,0) - COALESCE(misc.misc_cash,0)
+         + COALESCE(nbs.nbs_upi,0)  - COALESCE(misc.misc_upi,0)) AS total_balance
         FROM
         (
             SELECT 
@@ -259,13 +259,100 @@ def get_all_time_cash_upi():
     conn.close()
     return row
 
-@app.route("/index", methods=["GET", "POST"])
+def get_cash_upi_by_date_range(start_date, end_date):
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT
+          COALESCE(nbs.nbs_cash,0) - COALESCE(misc.misc_cash,0) AS total_cash,
+          COALESCE(nbs.nbs_upi,0)  - COALESCE(misc.misc_upi,0)  AS total_upi,
+          (
+            COALESCE(nbs.nbs_cash,0) - COALESCE(misc.misc_cash,0)
+          + COALESCE(nbs.nbs_upi,0)  - COALESCE(misc.misc_upi,0)
+          ) AS total_balance
+        FROM
+        (
+            SELECT 
+                SUM(cash) AS nbs_cash,
+                SUM(upi)  AS nbs_upi
+            FROM nbs_daily_reports
+            WHERE report_date BETWEEN %s AND %s
+        ) nbs,
+        (
+            SELECT
+                SUM(CASE WHEN payment_method='cash' THEN cost ELSE 0 END) AS misc_cash,
+                SUM(CASE WHEN payment_method='upi' THEN cost ELSE 0 END)  AS misc_upi
+            FROM miscellaneous_items
+            WHERE status='active'
+              AND DATE(COALESCE(manual_date, created_at)) BETWEEN %s AND %s
+        ) misc
+    """, (start_date, end_date, start_date, end_date))
+
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row
+
+def get_cash_upi_filtered(start_date=None, end_date=None):
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
+
+    where_nbs = []
+    where_misc = ["status='active'"]
+    params = []
+
+    if start_date and end_date:
+        where_nbs.append("report_date BETWEEN %s AND %s")
+        where_misc.append("DATE(COALESCE(manual_date, created_at)) BETWEEN %s AND %s")
+        params += [start_date, end_date, start_date, end_date]
+
+    nbs_where = "WHERE " + " AND ".join(where_nbs) if where_nbs else ""
+    misc_where = "WHERE " + " AND ".join(where_misc)
+
+    sql = f"""
+        SELECT
+          COALESCE(nbs.nbs_cash,0) - COALESCE(misc.misc_cash,0) AS total_cash,
+          COALESCE(nbs.nbs_upi,0)  - COALESCE(misc.misc_upi,0)  AS total_upi,
+          (
+            COALESCE(nbs.nbs_cash,0) - COALESCE(misc.misc_cash,0)
+          + COALESCE(nbs.nbs_upi,0)  - COALESCE(misc.misc_upi,0)
+          ) AS total_balance
+        FROM
+        (
+            SELECT 
+                SUM(cash) AS nbs_cash,
+                SUM(upi)  AS nbs_upi
+            FROM nbs_daily_reports
+            {nbs_where}
+        ) nbs,
+        (
+            SELECT
+                SUM(CASE WHEN payment_method='cash' THEN cost ELSE 0 END) AS misc_cash,
+                SUM(CASE WHEN payment_method='upi' THEN cost ELSE 0 END)  AS misc_upi
+            FROM miscellaneous_items
+            {misc_where}
+        ) misc
+    """
+
+    cur.execute(sql, tuple(params))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row
+
+
+
+@app.route("/index")
 def index():
     if "user" not in session:
         return redirect("/login")
 
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    
+    cash_upi = get_cash_upi_filtered(start_date, end_date)
     cost_details = get_total_cost_stats()[0]
-    cash_upi = get_all_time_cash_upi()
 
     return render_template(
         "index.html",
@@ -273,7 +360,9 @@ def index():
         cost_details=cost_details,
         total_cash=cash_upi["total_cash"],
         total_upi=cash_upi["total_upi"],
-        total_balance=cash_upi["total_balance"]
+        total_balance=cash_upi["total_balance"],
+        start_date=start_date,
+        end_date=end_date,
     )
 
 

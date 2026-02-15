@@ -2,3 +2,6 @@ __pycache__/
 app.log
 *.backupsqlup
 /sqlbackup
+.prettierignore
+.prettierrc
+.env
