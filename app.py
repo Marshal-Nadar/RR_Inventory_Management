@@ -4700,52 +4700,59 @@ def normalize_mode(mode):
 def deduct_vendor_payment_from_nbs(vendor_id, amount, payment_mode, payment_date, invoice_number):
     mode = normalize_mode(payment_mode)
     if not mode:
-        return  # ignore unknown modes
+        return
 
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
 
-    # Find nearest NBS report
+    remaining = float(amount)
+
+    while remaining > 0:
+        if mode == "cash":
+            # Find most recent report (any restaurant) with cash > 0, on or before payment_date
+            cur.execute("""
+                SELECT id, cash FROM nbs_daily_reports
+                WHERE report_date <= %s AND cash > 0
+                ORDER BY report_date DESC
+                LIMIT 1
+            """, (payment_date,))
+        else:
+            cur.execute("""
+                SELECT id, upi FROM nbs_daily_reports
+                WHERE report_date <= %s AND upi > 0
+                ORDER BY report_date DESC
+                LIMIT 1
+            """, (payment_date,))
+
+        row = cur.fetchone()
+        if not row:
+            break  # No more records to deduct from, stop
+
+        if mode == "cash":
+            available = float(row["cash"])
+            deduct = min(remaining, available)
+            cur.execute("""
+                UPDATE nbs_daily_reports
+                SET cash = cash - %s
+                WHERE id = %s
+            """, (deduct, row["id"]))
+        else:
+            available = float(row["upi"])
+            deduct = min(remaining, available)
+            cur.execute("""
+                UPDATE nbs_daily_reports
+                SET upi = upi - %s
+                WHERE id = %s
+            """, (deduct, row["id"]))
+
+        remaining -= deduct
+
+    # Log the deduction regardless
     cur.execute("""
-        SELECT id, cash, upi
-        FROM nbs_daily_reports
-        WHERE report_date <= %s
-        ORDER BY report_date DESC
-        LIMIT 1
-    """, (payment_date,))
-
-    row = cur.fetchone()
-    if not row:
-        conn.close()
-        return
-
-    if mode == "cash":
-        new_value = max(row["cash"] - amount, 0)
-        cur.execute("""
-            UPDATE nbs_daily_reports
-            SET cash = %s
-            WHERE id = %s
-        """, (new_value, row["id"]))
-
-    else:  # UPI
-        new_value = max(row["upi"] - amount, 0)
-        cur.execute("""
-            UPDATE nbs_daily_reports
-            SET upi = %s
-            WHERE id = %s
-        """, (new_value, row["id"]))
-
-    # 🔹 LOG ENTRY
-    cur.execute("""
-    INSERT INTO vendor_cash_deductions
-    (vendor_id, amount, payment_mode, invoice_number)
-    VALUES (%s, %s, %s, %s)
-    """, (
-        vendor_id,
-        amount,
-        payment_mode,   # 'cash' or 'upi'
-        invoice_number
-    ))
+        INSERT INTO vendor_cash_deductions
+        (vendor_id, amount, payment_mode, invoice_number)
+        VALUES (%s, %s, %s, %s)
+    """, (vendor_id, float(amount), payment_mode, invoice_number))
 
     conn.commit()
     cur.close()
