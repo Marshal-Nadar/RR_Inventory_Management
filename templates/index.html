@@ -3,24 +3,6 @@
   <div class="content">
     {% if user.role == 'admin' %}
     <!-- ===================== ADMIN DASHBOARD ===================== -->
-    <form method="get" class="row g-2 mb-3">
-        <div class="col-md-4">
-            <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
-        </div>
-        <div class="col-md-4">
-            <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
-        </div>
-        <div class="col-md-4">
-            <button class="btn btn-primary w-100">Apply Filter</button>
-        </div>
-    </form>
-
-    <div class="mb-3 d-flex gap-2">
-    <button class="btn btn-outline-secondary" onclick="quickFilter('today')">Today</button>
-    <button class="btn btn-outline-secondary" onclick="quickFilter('month')">This Month</button>
-    <button class="btn btn-outline-secondary" onclick="quickFilter('lastmonth')">Last Month</button>
-    </div>
-
     <div class="row text-center">
       <!-- CASH FIRST -->
       <div class="col-lg-4 col-md-4 col-sm-4 col-12">
@@ -378,27 +360,5 @@
       maximumFractionDigits: 2,
     });
   });
-</script>
-<script>
-function quickFilter(type){
-  const today = new Date();
-  let start, end;
-
-  if(type === "today"){
-    start = end = today.toISOString().split('T')[0];
-  }
-
-  if(type === "month"){
-    start = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-    end = today.toISOString().split('T')[0];
-  }
-
-  if(type === "lastmonth"){
-    start = new Date(today.getFullYear(), today.getMonth()-1, 1).toISOString().split('T')[0];
-    end = new Date(today.getFullYear(), today.getMonth(), 0).toISOString().split('T')[0];
-  }
-
-  window.location = `/index?start_date=${start}&end_date=${end}`;
-}
 </script>
 {% endif %} {% endblock %}

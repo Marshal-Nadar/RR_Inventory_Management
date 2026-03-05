@@ -228,16 +228,34 @@ def signup():
         return redirect("/signup")
     return render_template("signup.html")
 
-def get_all_time_cash_upi():
+def get_cash_upi_totals():
     conn = get_db_connection()
     cur = conn.cursor(dictionary=True)
 
-    cur.execute("""
+    sql = """
         SELECT
-          COALESCE(nbs.nbs_cash,0) - COALESCE(misc.misc_cash,0) AS total_cash,
-          COALESCE(nbs.nbs_upi,0)  - COALESCE(misc.misc_upi,0)  AS total_upi,
-          (COALESCE(nbs.nbs_cash,0) - COALESCE(misc.misc_cash,0)
-         + COALESCE(nbs.nbs_upi,0)  - COALESCE(misc.misc_upi,0)) AS total_balance
+          (COALESCE(nbs.nbs_cash,0)
+           - COALESCE(misc.misc_cash,0)
+           - COALESCE(vendor.vendor_cash,0)
+          ) AS total_cash,
+
+          (COALESCE(nbs.nbs_upi,0)
+           - COALESCE(misc.misc_upi,0)
+           - COALESCE(vendor.vendor_upi,0)
+          ) AS total_upi,
+
+          (
+            (COALESCE(nbs.nbs_cash,0)
+             - COALESCE(misc.misc_cash,0)
+             - COALESCE(vendor.vendor_cash,0)
+            )
+          +
+            (COALESCE(nbs.nbs_upi,0)
+             - COALESCE(misc.misc_upi,0)
+             - COALESCE(vendor.vendor_upi,0)
+            )
+          ) AS total_balance
+
         FROM
         (
             SELECT 
@@ -245,113 +263,37 @@ def get_all_time_cash_upi():
                 SUM(upi)  AS nbs_upi
             FROM nbs_daily_reports
         ) nbs,
+
         (
             SELECT
                 SUM(CASE WHEN payment_method='cash' THEN cost ELSE 0 END) AS misc_cash,
                 SUM(CASE WHEN payment_method='upi' THEN cost ELSE 0 END)  AS misc_upi
             FROM miscellaneous_items
             WHERE status='active'
-        ) misc
-    """)
+        ) misc,
 
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row
-
-def get_cash_upi_by_date_range(start_date, end_date):
-    conn = get_db_connection()
-    cur = conn.cursor(dictionary=True)
-
-    cur.execute("""
-        SELECT
-          COALESCE(nbs.nbs_cash,0) - COALESCE(misc.misc_cash,0) AS total_cash,
-          COALESCE(nbs.nbs_upi,0)  - COALESCE(misc.misc_upi,0)  AS total_upi,
-          (
-            COALESCE(nbs.nbs_cash,0) - COALESCE(misc.misc_cash,0)
-          + COALESCE(nbs.nbs_upi,0)  - COALESCE(misc.misc_upi,0)
-          ) AS total_balance
-        FROM
-        (
-            SELECT 
-                SUM(cash) AS nbs_cash,
-                SUM(upi)  AS nbs_upi
-            FROM nbs_daily_reports
-            WHERE report_date BETWEEN %s AND %s
-        ) nbs,
         (
             SELECT
-                SUM(CASE WHEN payment_method='cash' THEN cost ELSE 0 END) AS misc_cash,
-                SUM(CASE WHEN payment_method='upi' THEN cost ELSE 0 END)  AS misc_upi
-            FROM miscellaneous_items
-            WHERE status='active'
-              AND DATE(COALESCE(manual_date, created_at)) BETWEEN %s AND %s
-        ) misc
-    """, (start_date, end_date, start_date, end_date))
-
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row
-
-def get_cash_upi_filtered(start_date=None, end_date=None):
-    conn = get_db_connection()
-    cur = conn.cursor(dictionary=True)
-
-    where_nbs = []
-    where_misc = ["status='active'"]
-    params = []
-
-    if start_date and end_date:
-        where_nbs.append("report_date BETWEEN %s AND %s")
-        where_misc.append("DATE(COALESCE(manual_date, created_at)) BETWEEN %s AND %s")
-        params += [start_date, end_date, start_date, end_date]
-
-    nbs_where = "WHERE " + " AND ".join(where_nbs) if where_nbs else ""
-    misc_where = "WHERE " + " AND ".join(where_misc)
-
-    sql = f"""
-        SELECT
-          COALESCE(nbs.nbs_cash,0) - COALESCE(misc.misc_cash,0) AS total_cash,
-          COALESCE(nbs.nbs_upi,0)  - COALESCE(misc.misc_upi,0)  AS total_upi,
-          (
-            COALESCE(nbs.nbs_cash,0) - COALESCE(misc.misc_cash,0)
-          + COALESCE(nbs.nbs_upi,0)  - COALESCE(misc.misc_upi,0)
-          ) AS total_balance
-        FROM
-        (
-            SELECT 
-                SUM(cash) AS nbs_cash,
-                SUM(upi)  AS nbs_upi
-            FROM nbs_daily_reports
-            {nbs_where}
-        ) nbs,
-        (
-            SELECT
-                SUM(CASE WHEN payment_method='cash' THEN cost ELSE 0 END) AS misc_cash,
-                SUM(CASE WHEN payment_method='upi' THEN cost ELSE 0 END)  AS misc_upi
-            FROM miscellaneous_items
-            {misc_where}
-        ) misc
+                SUM(CASE WHEN payment_mode='cash' THEN amount ELSE 0 END) AS vendor_cash,
+                SUM(CASE WHEN payment_mode='upi' THEN amount ELSE 0 END)  AS vendor_upi
+            FROM vendor_cash_deductions
+        ) vendor
     """
 
-    cur.execute(sql, tuple(params))
+    cur.execute(sql)
     row = cur.fetchone()
     cur.close()
     conn.close()
+
     return row
-
-
 
 @app.route("/index")
 def index():
     if "user" not in session:
         return redirect("/login")
 
-    start_date = request.args.get("start_date")
-    end_date = request.args.get("end_date")
-    
-    cash_upi = get_cash_upi_filtered(start_date, end_date)
+    # 🔥 No filters anymore
+    cash_upi = get_cash_upi_totals()
     cost_details = get_total_cost_stats()[0]
 
     return render_template(
@@ -361,8 +303,6 @@ def index():
         total_cash=cash_upi["total_cash"],
         total_upi=cash_upi["total_upi"],
         total_balance=cash_upi["total_balance"],
-        start_date=start_date,
-        end_date=end_date,
     )
 
 
@@ -4699,60 +4639,25 @@ def normalize_mode(mode):
 
 def deduct_vendor_payment_from_nbs(vendor_id, amount, payment_mode, payment_date, invoice_number):
     mode = normalize_mode(payment_mode)
+
     if not mode:
         return
 
     conn = get_db_connection()
-    cur = conn.cursor(dictionary=True)
+    cur = conn.cursor()
 
-    remaining = float(amount)
-
-    while remaining > 0:
-        if mode == "cash":
-            # Find most recent report (any restaurant) with cash > 0, on or before payment_date
-            cur.execute("""
-                SELECT id, cash FROM nbs_daily_reports
-                WHERE report_date <= %s AND cash > 0
-                ORDER BY report_date DESC
-                LIMIT 1
-            """, (payment_date,))
-        else:
-            cur.execute("""
-                SELECT id, upi FROM nbs_daily_reports
-                WHERE report_date <= %s AND upi > 0
-                ORDER BY report_date DESC
-                LIMIT 1
-            """, (payment_date,))
-
-        row = cur.fetchone()
-        if not row:
-            break  # No more records to deduct from, stop
-
-        if mode == "cash":
-            available = float(row["cash"])
-            deduct = min(remaining, available)
-            cur.execute("""
-                UPDATE nbs_daily_reports
-                SET cash = cash - %s
-                WHERE id = %s
-            """, (deduct, row["id"]))
-        else:
-            available = float(row["upi"])
-            deduct = min(remaining, available)
-            cur.execute("""
-                UPDATE nbs_daily_reports
-                SET upi = upi - %s
-                WHERE id = %s
-            """, (deduct, row["id"]))
-
-        remaining -= deduct
-
-    # Log the deduction regardless
+    # 🔥 ONLY LOG DEDUCTION
     cur.execute("""
         INSERT INTO vendor_cash_deductions
-        (vendor_id, amount, payment_mode, invoice_number)
-        VALUES (%s, %s, %s, %s)
-    """, (vendor_id, float(amount), payment_mode, invoice_number))
+        (vendor_id, amount, payment_mode, invoice_number, created_at)
+        VALUES (%s, %s, %s, %s, %s)
+    """, (
+        vendor_id,
+        float(amount),
+        mode,  # normalized value (cash or upi)
+        invoice_number,
+        payment_date
+    ))
 
     conn.commit()
     cur.close()
