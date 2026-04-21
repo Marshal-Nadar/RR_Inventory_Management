@@ -233,52 +233,49 @@ def get_cash_upi_totals():
     cur = conn.cursor(dictionary=True)
 
     sql = """
+    SELECT
+        (COALESCE(nbs.nbs_cash, 0)
+         - COALESCE(misc.misc_cash, 0)
+         - COALESCE(vendor.vendor_cash, 0)
+        ) AS total_cash,
+
+        (COALESCE(nbs.nbs_upi, 0)
+         - COALESCE(misc.misc_upi, 0)
+         - COALESCE(vendor.vendor_upi, 0)
+        ) AS total_upi,
+
+        (
+            (COALESCE(nbs.nbs_cash, 0) - COALESCE(misc.misc_cash, 0) - COALESCE(vendor.vendor_cash, 0))
+            +
+            (COALESCE(nbs.nbs_upi, 0)  - COALESCE(misc.misc_upi, 0)  - COALESCE(vendor.vendor_upi, 0))
+        ) AS total_balance
+
+    FROM
+    (
+        SELECT 
+            SUM(cash) AS nbs_cash,
+            SUM(upi + swiggy + zomato) AS nbs_upi
+        FROM nbs_daily_reports
+    ) nbs,
+
+    (
         SELECT
-          (COALESCE(nbs.nbs_cash,0)
-           - COALESCE(misc.misc_cash,0)
-           - COALESCE(vendor.vendor_cash,0)
-          ) AS total_cash,
+            SUM(CASE WHEN mi.payment_method = 'cash' THEN mi.cost ELSE 0 END) AS misc_cash,
+            SUM(CASE WHEN mi.payment_method = 'upi'  THEN mi.cost ELSE 0 END) AS misc_upi
+        FROM miscellaneous_items mi
+        INNER JOIN nbs_daily_reports nbs
+            ON mi.restaurant_id = nbs.restaurant_id
+            AND DATE(COALESCE(mi.manual_date, mi.created_at)) = nbs.report_date
+        WHERE mi.status = 'active'
+    ) misc,
 
-          (COALESCE(nbs.nbs_upi,0)
-           - COALESCE(misc.misc_upi,0)
-           - COALESCE(vendor.vendor_upi,0)
-          ) AS total_upi,
-
-          (
-            (COALESCE(nbs.nbs_cash,0)
-             - COALESCE(misc.misc_cash,0)
-             - COALESCE(vendor.vendor_cash,0)
-            )
-          +
-            (COALESCE(nbs.nbs_upi,0)
-             - COALESCE(misc.misc_upi,0)
-             - COALESCE(vendor.vendor_upi,0)
-            )
-          ) AS total_balance
-
-        FROM
-        (
-            SELECT 
-                SUM(cash) AS nbs_cash,
-                SUM(upi)  AS nbs_upi
-            FROM nbs_daily_reports
-        ) nbs,
-
-        (
-            SELECT
-                SUM(CASE WHEN payment_method='cash' THEN cost ELSE 0 END) AS misc_cash,
-                SUM(CASE WHEN payment_method='upi' THEN cost ELSE 0 END)  AS misc_upi
-            FROM miscellaneous_items
-            WHERE status='active'
-        ) misc,
-
-        (
-            SELECT
-                SUM(CASE WHEN payment_mode='cash' THEN amount ELSE 0 END) AS vendor_cash,
-                SUM(CASE WHEN payment_mode='upi' THEN amount ELSE 0 END)  AS vendor_upi
-            FROM vendor_cash_deductions
-        ) vendor
-    """
+    (
+        SELECT
+            SUM(CASE WHEN payment_mode = 'cash' THEN amount ELSE 0 END) AS vendor_cash,
+            SUM(CASE WHEN payment_mode = 'upi'  THEN amount ELSE 0 END) AS vendor_upi
+        FROM vendor_cash_deductions
+    ) vendor
+"""
 
     cur.execute(sql)
     row = cur.fetchone()
@@ -515,6 +512,9 @@ def addmiscitem():
     elif email == "dharanistorekeeper@gmail.com":
         selected_restaurant_id = 4   # NEW BUS STAND
         disable_restaurant_dropdown = True
+    elif email == "bmvalliyur@gmail.com":
+        selected_restaurant_id = 5   # VALLIYUR
+        disable_restaurant_dropdown = True
 
     # Fetch restaurants and expense types
     restaurants = fetch_all("SELECT id, restaurantname FROM restaurant WHERE status = 'active'")
@@ -647,6 +647,9 @@ def miscitemlist():
         elif email == "bmnewbs@gmail.com":
             query += " AND mi.restaurant_id = %s"
             params.append(2)  # NEW BUS STAND
+        elif email == "bmvalliyur@gmail.com":
+            query += " AND mi.restaurant_id = %s"
+            params.append(5)  # VALLIYUR
 
     # Hide manual_date records for branch/store managers
     if role in ["branch_manager", "store_manager"]:
@@ -4408,6 +4411,9 @@ def add_nbs_report():
     elif email == "dharanistorekeeper@gmail.com":
         selected_restaurant_id = 4
         disable_restaurant_dropdown = True
+    elif email == "bmvalliyur@gmail.com":
+        selected_restaurant_id = 5
+        disable_restaurant_dropdown = True
 
     # Fetch all active restaurants
     restaurants = fetch_all("SELECT id, restaurantname FROM restaurant WHERE status='active'")
@@ -4706,7 +4712,8 @@ def nbs_reports():
         email_to_restaurant = {
             "bmktcnagar@gmail.com": 1,
             "bmnewbs@gmail.com": 2,
-            "dharanistorekeeper@gmail.com": 4
+            "dharanistorekeeper@gmail.com": 4,
+            "bmvalliyur@gmail.com": 5
         }
         fixed_restaurant_id = email_to_restaurant.get(email)
         if fixed_restaurant_id:
@@ -5021,7 +5028,8 @@ def add_prebooking():
                 email_to_restaurant = {
                     "bmktcnagar@gmail.com": 1,
                     "bmnewbs@gmail.com": 2,
-                    "dharanistorekeeper@gmail.com": 4
+                    "dharanistorekeeper@gmail.com": 4,
+                    "bmvalliyur@gmail.com": 5
                 }
                 restaurant_id = email_to_restaurant.get(user.get('email'))
             
@@ -5189,7 +5197,8 @@ def prebooking_list():
         email_to_restaurant = {
             "bmktcnagar@gmail.com": 1,
             "bmnewbs@gmail.com": 2,
-            "dharanistorekeeper@gmail.com": 4
+            "dharanistorekeeper@gmail.com": 4,
+            "bmvalliyur@gmail.com": 5
         }
         rid = email_to_restaurant.get(email)
         if rid:
@@ -5347,7 +5356,8 @@ def prebooking_list_print_all():
         email_to_restaurant = {
             "bmktcnagar@gmail.com": 1,
             "bmnewbs@gmail.com": 2,
-            "dharanistorekeeper@gmail.com": 4
+            "dharanistorekeeper@gmail.com": 4,
+            "bmvalliyur@gmail.com": 5
         }
         rid = email_to_restaurant.get(email)
         if rid:
