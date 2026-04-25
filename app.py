@@ -289,9 +289,11 @@ def index():
     if "user" not in session:
         return redirect("/login")
 
-    # 🔥 No filters anymore
     cash_upi = get_cash_upi_totals()
-    cost_details = get_total_cost_stats()[0]
+
+    date_from = request.args.get("date_from")
+    date_to = request.args.get("date_to")
+    cost_details = get_total_cost_stats(date_from, date_to)[0]
 
     return render_template(
         "index.html",
@@ -300,8 +302,24 @@ def index():
         total_cash=cash_upi["total_cash"],
         total_upi=cash_upi["total_upi"],
         total_balance=cash_upi["total_balance"],
+        date_from=date_from or "",
+        date_to=date_to or "",
     )
 
+@app.route("/api/cost_stats")
+def api_cost_stats():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    date_from = request.args.get("date_from")
+    date_to = request.args.get("date_to")
+    data = get_total_cost_stats(date_from, date_to)[0]
+
+    return jsonify({
+        "total_purchased_amount": float(data["total_purchased_amount"]),
+        "total_paid": float(data["total_paid"]),
+        "total_due": float(data["total_due"]),
+    })
 
 @app.route('/api/years', methods=['GET'])
 def get_years():
@@ -4107,17 +4125,6 @@ def stock_report():
     return render_template('stock_report.html', user=session["user"], storage_rooms=get_all_storagerooms(only_active=True),
                            restaurants=get_all_restaurants(only_active=True),
                            kitchens=get_all_kitchens(only_active=True), rawmaterial_category=rm_categories, contact_details=contact_details)
-
-
-@app.route('/transfer_raw_material_report', methods=["GET", "POST"])
-def transfer_raw_material_report():
-    if "user" not in session:
-        return redirect("/login")
-    contact_details = get_contact_details()
-    return render_template('transfer_raw_material_report.html', user=session["user"], storage_rooms=get_all_storagerooms(only_active=True),
-                           restaurants=get_all_restaurants(only_active=True),
-                           kitchens=get_all_kitchens(only_active=True), contact_details=contact_details)
-
 
 @app.route('/get_transfer_details_report', methods=["GET"])
 def get_transfer_details():

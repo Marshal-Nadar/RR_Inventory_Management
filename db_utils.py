@@ -694,16 +694,47 @@ def get_storageroom_rawmaterial_quantity(storageroom_id, rawmaterial_id):
     return data
 
 
-def get_total_cost_stats():
+def get_total_cost_stats(date_from=None, date_to=None):
     data = [{'total_purchased_amount': 0, 'total_paid': 0, 'total_due': 0}]
-    query = """
+
+    params = []
+
+    # --- total_purchased_amount: filter by purchase_date ---
+    purchase_filter = "WHERE 1=1"
+    if date_from:
+        purchase_filter += " AND purchase_date >= %s"
+        params.append(date_from)
+    if date_to:
+        purchase_filter += " AND purchase_date <= %s"
+        params.append(date_to)
+
+    # --- total_paid: filter by paid_on from payment_records ---
+    paid_filter = "WHERE 1=1"
+    if date_from:
+        paid_filter += " AND paid_on >= %s"
+        params.append(date_from)
+    if date_to:
+        paid_filter += " AND paid_on <= %s"
+        params.append(date_to)
+
+    query = f"""
     SELECT
-        IFNULL(SUM(outstanding_cost), 0) AS total_purchased_amount,
-        IFNULL(SUM(total_paid), 0) AS total_paid,
-        IFNULL(SUM(total_due), 0) AS total_due
-    FROM `vendor_payment_tracker`;
+        (SELECT IFNULL(SUM(outstanding_cost), 0)
+         FROM vendor_payment_tracker
+         {purchase_filter}
+        ) AS total_purchased_amount,
+
+        (SELECT IFNULL(SUM(amount_paid), 0)
+         FROM payment_records
+         {paid_filter}
+        ) AS total_paid,
+
+        (SELECT IFNULL(SUM(total_due), 0)
+         FROM vendor_payment_tracker
+        ) AS total_due
     """
-    cost_data = fetch_all(query)
+
+    cost_data = fetch_all(query, tuple(params))
     if cost_data:
         data = cost_data
     return data

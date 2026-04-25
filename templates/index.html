@@ -43,6 +43,25 @@
         </div>
       </div>
     </div>
+    <!-- Purchase Stats Date Filter -->
+    <div class="row mb-3">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-body py-2">
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+              <label class="mb-0 fw-semibold">Purchase Stats Filter:</label>
+              <input type="date" id="purchaseDateFrom" class="form-control w-auto" 
+                    value="{{ date_from }}" placeholder="From Date">
+              <span>to</span>
+              <input type="date" id="purchaseDateTo" class="form-control w-auto" 
+                    value="{{ date_to }}" placeholder="To Date">
+              <button id="applyPurchaseFilter" class="btn btn-primary">Filter</button>
+              <button id="resetPurchaseFilter" class="btn btn-secondary">Reset</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="row">
       <div class="col-lg-4 col-sm-6 col-12">
         <div class="dash-widget">
@@ -337,28 +356,49 @@
 </script>
 <script>
   document.addEventListener("DOMContentLoaded", function () {
-    let amountElement = document.getElementById("totalPurchasedAmount");
-    let amount = parseFloat(amountElement.textContent);
-    amountElement.textContent = amount.toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+
+    function formatINR(value) {
+      return parseFloat(value).toLocaleString("en-IN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    }
+
+    function loadCostStats(dateFrom, dateTo) {
+      let params = {};
+      if (dateFrom) params.date_from = dateFrom;
+      if (dateTo) params.date_to = dateTo;
+
+      fetch(`/api/cost_stats?${new URLSearchParams(params)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          document.getElementById("totalPurchasedAmount").textContent = formatINR(data.total_purchased_amount);
+          document.getElementById("totalPaidAmount").textContent = formatINR(data.total_paid);
+          document.getElementById("totalDueAmount").textContent = formatINR(data.total_due);
+        })
+        .catch((err) => console.error("Error loading cost stats:", err));
+    }
+
+    // Apply filter
+    document.getElementById("applyPurchaseFilter").addEventListener("click", function () {
+      const from = document.getElementById("purchaseDateFrom").value;
+      const to = document.getElementById("purchaseDateTo").value;
+      loadCostStats(from, to);
     });
-  });
-  document.addEventListener("DOMContentLoaded", function () {
-    let amountElement = document.getElementById("totalPaidAmount");
-    let amount = parseFloat(amountElement.textContent);
-    amountElement.textContent = amount.toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+
+    // Reset filter
+    document.getElementById("resetPurchaseFilter").addEventListener("click", function () {
+      document.getElementById("purchaseDateFrom").value = "";
+      document.getElementById("purchaseDateTo").value = "";
+      loadCostStats("", "");
     });
-  });
-  document.addEventListener("DOMContentLoaded", function () {
-    let amountElement = document.getElementById("totalDueAmount");
-    let amount = parseFloat(amountElement.textContent);
-    amountElement.textContent = amount.toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+
+    // Initial format on page load (no API call, just format existing values)
+    ["totalPurchasedAmount", "totalPaidAmount", "totalDueAmount"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = formatINR(parseFloat(el.textContent) || 0);
     });
+
   });
 </script>
 {% endif %} {% endblock %}
