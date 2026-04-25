@@ -486,7 +486,7 @@ def get_all_pending_payments_vendor_cumulative():
     return payments
 
 
-def get_payment_details_of_vendor_between_dates(vendor_id, from_date, to_date):
+def get_payment_details_of_vendor_between_dates(vendor_id, from_date, to_date, payment_mode=''):
     query = """
     SELECT
         pr.id AS payment_id,
@@ -504,10 +504,18 @@ def get_payment_details_of_vendor_between_dates(vendor_id, from_date, to_date):
     WHERE
         pr.vendor_id = %s
         AND pr.paid_on BETWEEN %s AND %s
-    ORDER BY
-    pr.paid_on ASC;
     """
-    payments = fetch_all(query, (vendor_id, from_date, to_date))
+    params = [vendor_id, from_date, to_date]
+
+    if payment_mode == 'cash':
+        query += " AND pr.mode_of_payment = 'cash'"
+    elif payment_mode == 'upi':
+        # ✅ upi, bank_transfer, cheque all treated as UPI
+        query += " AND pr.mode_of_payment IN ('upi', 'bank_transfer', 'cheque')"
+
+    query += " ORDER BY pr.paid_on ASC"
+
+    payments = fetch_all(query, tuple(params))
     return payments
 
 

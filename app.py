@@ -2450,19 +2450,21 @@ def get_vendor_payments():
     vendor_id = request.args.get('vendor_id')
     from_date = request.args.get('from_date')
     to_date = request.args.get('to_date')
+    payment_mode = request.args.get('payment_mode', '')  # ✅ NEW
 
-    # Convert string dates to datetime objects
     try:
         from_date = datetime.strptime(from_date, '%Y-%m-%d')
         to_date = datetime.strptime(to_date, '%Y-%m-%d')
     except ValueError:
         return jsonify({"error": "Invalid date format"}), 400
 
-    # Fetch payment records for the given vendor and date range
-    payments_per_vendor = get_payment_details_of_vendor_between_dates(vendor_id, from_date, to_date)
+    payments_per_vendor = get_payment_details_of_vendor_between_dates(
+        vendor_id, from_date, to_date, payment_mode  # ✅ pass it down
+    )
 
     def serialize(payment):
         return {
+            'vendor_name': payment['vendor_name'],  # ✅ NEW
             'paid_on': payment['paid_on'].strftime('%Y-%m-%d'),
             'invoice_number': payment['invoice_number'],
             'purchase_date': payment['purchase_date'],

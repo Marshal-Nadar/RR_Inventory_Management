@@ -17,7 +17,7 @@
             <div class="card-body">
                 <!-- Filters Section -->
                 <div class="row align-items-end mb-4">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label for="vendorDropdown" class="form-label">Vendor</label>
                         <input list="vendorList" id="vendorDropdown" class="form-control">
                         <datalist id="vendorList">
@@ -27,14 +27,23 @@
                         </datalist>
                     </div>
                     <div class="col-md-2">
-                        <label for="fromDate" class="form-label">From Date</label>
+                        <label for="from_date" class="form-label">From Date</label>
                         <input type="date" id="from_date" class="form-control" required>
                     </div>
                     <div class="col-md-2">
-                        <label for="toDate" class="form-label">To Date</label>
+                        <label for="to_date" class="form-label">To Date</label>
                         <input type="date" id="to_date" class="form-control" required>
                     </div>
-                    <div class="col-md-4 text-end">
+                    <!-- ✅ NEW: Payment Mode Filter -->
+                    <div class="col-md-2">
+                        <label for="paymentModeFilter" class="form-label">Payment Mode</label>
+                        <select id="paymentModeFilter" class="form-control">
+                            <option value="">All</option>
+                            <option value="cash">Cash</option>
+                            <option value="upi">UPI (UPI / Bank Transfer / Cheque)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 text-end">
                         <button id="submitBtn" class="btn btn-primary me-2">Submit</button>
                         <button id="printButton" class="btn btn-secondary" disabled>Print</button>
                     </div>
@@ -45,6 +54,7 @@
                     <table class="table table-bordered">
                         <thead class="table">
                             <tr>
+                                <th>Vendor Name</th>
                                 <th>Amount Paid On</th>
                                 <th>Invoice Number</th>
                                 <th>Invoice Purchase Date</th>
@@ -77,6 +87,7 @@
         const vendorList = document.getElementById('vendorList');
         const fromDateInput = document.getElementById('from_date');
         const toDateInput = document.getElementById('to_date');
+        const paymentModeFilter = document.getElementById('paymentModeFilter');
         const submitButton = document.getElementById('submitBtn');
         const printButton = document.getElementById('printButton');
         const paymentTableBody = document.getElementById('paymentTableBody');
@@ -88,22 +99,23 @@
         }
 
         function resetTable() {
-            paymentTableBody.innerHTML = '<tr><td colspan="4" class="text-center">No data found</td></tr>';
+            paymentTableBody.innerHTML = '<tr><td colspan="6" class="text-center">No data found</td></tr>';
             totalPaidField.textContent = '';
-            printButton.disabled = true; // Disable print button when no data
+            printButton.disabled = true;
         }
 
         submitButton.addEventListener('click', function () {
             const vendorId = getVendorId(vendorInput.value);
             const fromDate = fromDateInput.value;
             const toDate = toDateInput.value;
+            const paymentMode = paymentModeFilter.value;
 
             if (!vendorId || !fromDate || !toDate) {
                 alert('Please select a vendor and date range');
                 return;
             }
 
-            fetch(`/get_vendor_payments?vendor_id=${vendorId}&from_date=${fromDate}&to_date=${toDate}`)
+            fetch(`/get_vendor_payments?vendor_id=${vendorId}&from_date=${fromDate}&to_date=${toDate}&payment_mode=${paymentMode}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.payments && data.payments.length > 0) {
@@ -112,19 +124,19 @@
                         data.payments.forEach(payment => {
                             totalPaid += payment.amount_paid;
                             const row = `
-                            <tr>
-                                <td>${payment.paid_on}</td>
-                                <td>${payment.invoice_number}</td>
-                                <td>${payment.purchase_date}</td>
-                                <td>${payment.mode_of_payment}</td>
-                                <td>${parseFloat(payment.amount_paid).toLocaleString('en-IN')}</td>
-                            </tr>
-                        `;
+                                <tr>
+                                    <td>${payment.vendor_name}</td>
+                                    <td>${payment.paid_on}</td>
+                                    <td>${payment.invoice_number}</td>
+                                    <td>${payment.purchase_date}</td>
+                                    <td>${normalizePaymentMode(payment.mode_of_payment)}</td>
+                                    <td>${parseFloat(payment.amount_paid).toLocaleString('en-IN')}</td>
+                                </tr>
+                            `;
                             paymentTableBody.insertAdjacentHTML('beforeend', row);
                         });
-
                         totalPaidField.textContent = `Total Paid: Rs. ${totalPaid.toLocaleString('en-IN')}`;
-                        printButton.disabled = false; // Enable print button when data is available
+                        printButton.disabled = false;
                     } else {
                         resetTable();
                     }
@@ -137,36 +149,38 @@
 
         printButton.addEventListener('click', function () {
             const printContent = `
-        <div>
-            <div style="text-align: center;">
-                <h2> {{ contact_details.name }} </h2>
-                <p> Contact: {{ contact_details.contact_number }} </p>
-                <p> Address: {{ contact_details.address }} </p>
-            </div>
-            <p><b>Vendor:</b> ${vendorInput.value}</p>
-            <p><b>Date Range:</b> ${fromDateInput.value} to ${toDateInput.value}</p>
-            <table border="1" width="100%" style="border-collapse: collapse; text-align: center;">
-                <thead>
-                    <tr>
-                        <th>Amount Paid On</th>
-                        <th>Invoice Number</th>
-                        <th>Invoice Purchase Date</th>
-                        <th>Payment Mode</th>
-                        <th>Amount Paid(Rs)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${paymentTableBody.innerHTML}
-                </tbody>
-            </table>
-            <p><strong>${totalPaidField.textContent}</strong></p>
-            <br><br>
-            <div style="display: flex; justify-content: space-between;">
-                <p>Authorized Signature: __________</p>
-                <p>Receiver Signature: __________</p>
-            </div>
-        </div>
-        `;
+                <div>
+                    <div style="text-align: center;">
+                        <h2>{{ contact_details.name }}</h2>
+                        <p>Contact: {{ contact_details.contact_number }}</p>
+                        <p>Address: {{ contact_details.address }}</p>
+                    </div>
+                    <p><b>Vendor:</b> ${vendorInput.value}</p>
+                    <p><b>Date Range:</b> ${fromDateInput.value} to ${toDateInput.value}</p>
+                    <p><b>Payment Mode:</b> ${paymentModeFilter.value || 'All'}</p>
+                    <table border="1" width="100%" style="border-collapse: collapse; text-align: center;">
+                        <thead>
+                            <tr>
+                                <th>Vendor Name</th>
+                                <th>Amount Paid On</th>
+                                <th>Invoice Number</th>
+                                <th>Invoice Purchase Date</th>
+                                <th>Payment Mode</th>
+                                <th>Amount Paid (Rs)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${paymentTableBody.innerHTML}
+                        </tbody>
+                    </table>
+                    <p><strong>${totalPaidField.textContent}</strong></p>
+                    <br><br>
+                    <div style="display: flex; justify-content: space-between;">
+                        <p>Authorized Signature: __________</p>
+                        <p>Receiver Signature: __________</p>
+                    </div>
+                </div>
+            `;
 
             let iframe = document.createElement('iframe');
             iframe.style.position = 'absolute';
@@ -189,7 +203,14 @@
                 document.body.removeChild(iframe);
             }, 1000);
         });
-
     });
+
+    function normalizePaymentMode(mode) {
+    if (['upi', 'bank_transfer', 'cheque'].includes(mode.toLowerCase())) {
+        return 'UPI';
+    }
+    return mode.toUpperCase();
+}
+
 </script>
 {% endblock %}
