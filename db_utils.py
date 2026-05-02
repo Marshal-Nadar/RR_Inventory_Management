@@ -496,24 +496,28 @@ def get_payment_details_of_vendor_between_dates(vendor_id, from_date, to_date, p
         DATE_FORMAT(pr.purchase_date, '%Y-%m-%d') AS purchase_date,
         pr.mode_of_payment,
         pr.amount_paid,
-        pr.paid_on
+        DATE_FORMAT(pr.paid_on, '%Y-%m-%d') AS paid_on
     FROM
         payment_records AS pr
     JOIN
         vendor_list AS vl ON pr.vendor_id = vl.id
     WHERE
-        pr.vendor_id = %s
-        AND pr.paid_on BETWEEN %s AND %s
+        pr.paid_on BETWEEN %s AND %s
     """
-    params = [vendor_id, from_date, to_date]
+    params = [from_date, to_date]
 
+    # Handle 'All' vendors
+    if vendor_id != "all":
+        query += " AND pr.vendor_id = %s"
+        params.append(vendor_id)
+
+    # Payment Mode Filter
     if payment_mode == 'cash':
         query += " AND pr.mode_of_payment = 'cash'"
     elif payment_mode == 'upi':
-        # ✅ upi, bank_transfer, cheque all treated as UPI
         query += " AND pr.mode_of_payment IN ('upi', 'bank_transfer', 'cheque')"
 
-    query += " ORDER BY pr.paid_on ASC"
+    query += " ORDER BY pr.paid_on ASC, vl.vendor_name ASC"
 
     payments = fetch_all(query, tuple(params))
     return payments

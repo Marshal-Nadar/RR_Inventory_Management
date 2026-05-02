@@ -50,82 +50,80 @@
                 <th>Notes</th>
                 <th>Cost</th>
                 <th>Date</th>
-                {% if user.role == 'admin' %}
                 <th>Actions</th>
-                {% endif %}
               </tr>
             </thead>
 
             <tbody>
               {% for item in misc_items %}
-              <tr data-item-id="{{ item.id }}">
-                <td style="width: 4%">{{ loop.index }}</td>
-                <td style="width: 10%">{{ item.type_of_expense or '-' }}</td>
-                <td style="width: 10%">{{ item.sub_category or '-' }}</td>
-                <td>
-                  {{ item.restaurantname if item.restaurantname else '-' }}
-                </td>
-                <td style="width: 8%">
-                  {{ item.branch_manager if item.branch_manager else '-' }}
-                </td>
-                <td class="notes-col" style="width: 68%">{{ item.notes }}</td>
-                <td style="width: 15%">₹ {{ item.cost }}</td>
-                <td style="width: 10%; word-break: break-all">
-                  {% if item.manual_date %} {{
-                  item.manual_date.strftime('%d-%m-%Y %I:%M:%S %p') }} {% elif
-                  item.created_at %} {{ item.created_at.strftime('%d-%m-%Y
-                  %I:%M:%S %p') }} {% else %} - {% endif %}
-                </td>
-                {% if user.role == 'admin' %}
-                <td style="width: 120%">
-                  <div class="btn-group" role="group">
-                    <button
-  class="btn btn-sm btn-outline-info view-btn"
-  data-item-id="{{ item.id }}"
-  data-item-data='{{ {
-    "type_of_expense": item.type_of_expense or "-",
-    "sub_category": item.sub_category or "-",
-    "branch_name": item.restaurantname or "-",
-    "branch_manager": item.branch_manager or "-",
-    "cost": item.cost or "0",
-    "payment_method": item.payment_method or "-",
-    "notes": item.notes or "-",
-    "manual_date": item.manual_date.strftime("%d-%m-%Y %I:%M:%S %p") if item.manual_date else "",
-    "created_at": item.created_at.strftime("%d-%m-%Y %I:%M:%S %p") if item.created_at else ""
-  } | tojson }}'>
-  <i class="fas fa-eye"></i> View
-</button>
-                    <button
-                      class="btn btn-sm btn-outline-primary edit-btn"
-                      data-item-id="{{ item.id }}"
-                      data-item-data='{{ {
-                                                        "expense_type_id": item.expense_type_id,
-                                                        "expense_subcategory_id": item.expense_subcategory_id,
-                                                        "restaurant_id": item.restaurant_id,
-                                                        "branch_manager": item.branch_manager or "",
-                                                        "cost": item.cost or "",
-                                                        "payment_method": item.payment_method or "cash",
-                                                        "notes": item.notes or "",
-                                                        "manual_date": item.manual_date.strftime("%Y-%m-%d") if item.manual_date else "",
-                                                        "type_of_expense": item.type_of_expense or "",
-                                                        "sub_category": item.sub_category or "",
-                                                        "branch_name": item.branch_name or ""
-                                                    } | tojson }}'
-                    >
-                      <i class="fas fa-edit"></i> Edit
-                    </button>
-                    <button
-                      class="btn btn-sm btn-outline-danger delete-btn"
-                      data-item-id="{{ item.id }}"
-                      data-item-info="{{ item.type_of_expense or 'Item' }} - ₹{{ item.cost or '0' }}"
-                    >
-                      <i class="fas fa-trash"></i> Delete
-                    </button>
-                  </div>
-                </td>
-                {% endif %}
-              </tr>
-              {% endfor %}
+<tr data-item-id="{{ item.id }}">
+  <td style="width: 4%">{{ loop.index }}</td>
+  <td style="width: 10%">{{ item.type_of_expense or '-' }}</td>
+  <td style="width: 10%">{{ item.sub_category or '-' }}</td>
+  <td>{{ item.restaurantname if item.restaurantname else '-' }}</td>
+  <td style="width: 8%">{{ item.branch_manager if item.branch_manager else '-' }}</td>
+  <td class="notes-col" style="width: 68%">{{ item.notes }}</td>
+  <td style="width: 15%">₹ {{ item.cost }}</td>
+  <td style="width: 10%; word-break: break-all">
+    {% if item.manual_date %}
+      {{ item.manual_date.strftime('%d-%m-%Y %I:%M:%S %p') }}
+    {% elif item.created_at %}
+      {{ item.created_at.strftime('%d-%m-%Y %I:%M:%S %p') }}
+    {% else %}
+      -
+    {% endif %}
+  </td>
+  
+  <!-- ✅ Actions Column - Visible to ALL users -->
+  <td style="width: 120px;">
+    <div class="btn-group" role="group">
+      
+      <!-- View Button - Visible to Everyone -->
+      <button class="btn btn-sm btn-outline-info view-btn"
+              data-item-id="{{ item.id }}"
+              data-item-data='{{ {
+                "type_of_expense": item.type_of_expense or "-",
+                "sub_category": item.sub_category or "-",
+                "branch_name": item.restaurantname or "-",
+                "branch_manager": item.branch_manager or "-",
+                "cost": item.cost or "0",
+                "payment_method": item.payment_method or "-",
+                "notes": item.notes or "-",
+                "manual_date": item.manual_date.strftime("%d-%m-%Y %I:%M:%S %p") if item.manual_date else "",
+                "created_at": item.created_at.strftime("%d-%m-%Y %I:%M:%S %p") if item.created_at else ""
+              } | tojson }}'>
+        <i class="fas fa-eye"></i> View
+      </button>
+
+      <!-- Edit & Delete Buttons - Only for Admin -->
+      {% if user.role == 'admin' %}
+      <button class="btn btn-sm btn-outline-primary edit-btn"
+              data-item-id="{{ item.id }}"
+              data-item-data='{{ {
+                "expense_type_id": item.expense_type_id,
+                "expense_subcategory_id": item.expense_subcategory_id,
+                "restaurant_id": item.restaurant_id,
+                "branch_manager": item.branch_manager or "",
+                "cost": item.cost or "",
+                "payment_method": item.payment_method or "cash",
+                "notes": item.notes or "",
+                "manual_date": item.manual_date.strftime("%Y-%m-%d") if item.manual_date else "",
+                "type_of_expense": item.type_of_expense or "",
+                "sub_category": item.sub_category or "",
+              } | tojson }}'>
+        <i class="fas fa-edit"></i> Edit
+      </button>
+
+      <button class="btn btn-sm btn-outline-danger delete-btn"
+              data-item-id="{{ item.id }}"
+              data-item-info="{{ item.type_of_expense or 'Item' }} - ₹{{ item.cost or '0' }}">
+        <i class="fas fa-trash"></i> Delete
+      </button>
+      {% endif %}
+    </div>
+  </td>
+</tr>
+{% endfor %}
             </tbody>
 
             <div

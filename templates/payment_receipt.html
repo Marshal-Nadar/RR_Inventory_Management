@@ -21,6 +21,8 @@
                         <label for="vendorDropdown" class="form-label">Vendor</label>
                         <input list="vendorList" id="vendorDropdown" class="form-control">
                         <datalist id="vendorList">
+                            <!-- ✅ Added "All" option like in payment_record.html -->
+                            <option value="All" data-id="all"></option>
                             {% for vendor in vendors %}
                             <option value="{{ vendor.vendor_name }}" data-id="{{ vendor.id }}"></option>
                             {% endfor %}
@@ -34,7 +36,7 @@
                         <label for="to_date" class="form-label">To Date</label>
                         <input type="date" id="to_date" class="form-control" required>
                     </div>
-                    <!-- ✅ NEW: Payment Mode Filter -->
+                    <!-- Payment Mode Filter -->
                     <div class="col-md-2">
                         <label for="paymentModeFilter" class="form-label">Payment Mode</label>
                         <select id="paymentModeFilter" class="form-control">
@@ -64,7 +66,7 @@
                         </thead>
                         <tbody id="paymentTableBody">
                             <tr>
-                                <td colspan="4" class="text-center">No data found</td>
+                                <td colspan="6" class="text-center">No data found</td>
                             </tr>
                         </tbody>
                     </table>
@@ -115,14 +117,16 @@
                 return;
             }
 
+            // Updated fetch URL to support "all"
             fetch(`/get_vendor_payments?vendor_id=${vendorId}&from_date=${fromDate}&to_date=${toDate}&payment_mode=${paymentMode}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.payments && data.payments.length > 0) {
                         paymentTableBody.innerHTML = '';
                         let totalPaid = 0;
+
                         data.payments.forEach(payment => {
-                            totalPaid += payment.amount_paid;
+                            totalPaid += parseFloat(payment.amount_paid || 0);
                             const row = `
                                 <tr>
                                     <td>${payment.vendor_name}</td>
@@ -135,6 +139,7 @@
                             `;
                             paymentTableBody.insertAdjacentHTML('beforeend', row);
                         });
+
                         totalPaidField.textContent = `Total Paid: Rs. ${totalPaid.toLocaleString('en-IN')}`;
                         printButton.disabled = false;
                     } else {
@@ -147,6 +152,7 @@
                 });
         });
 
+        // Print functionality (slightly improved)
         printButton.addEventListener('click', function () {
             const printContent = `
                 <div>
@@ -184,8 +190,8 @@
 
             let iframe = document.createElement('iframe');
             iframe.style.position = 'absolute';
-            iframe.style.width = '0px';
-            iframe.style.height = '0px';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
             iframe.style.border = 'none';
             document.body.appendChild(iframe);
 
@@ -199,18 +205,17 @@
             iframe.contentWindow.focus();
             iframe.contentWindow.print();
 
-            setTimeout(() => {
-                document.body.removeChild(iframe);
-            }, 1000);
+            setTimeout(() => document.body.removeChild(iframe), 1000);
         });
     });
 
     function normalizePaymentMode(mode) {
-    if (['upi', 'bank_transfer', 'cheque'].includes(mode.toLowerCase())) {
-        return 'UPI';
+        if (!mode) return '';
+        const lowerMode = mode.toLowerCase();
+        if (['upi', 'bank_transfer', 'cheque'].includes(lowerMode)) {
+            return 'UPI';
+        }
+        return mode.toUpperCase();
     }
-    return mode.toUpperCase();
-}
-
 </script>
 {% endblock %}

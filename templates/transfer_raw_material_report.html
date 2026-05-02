@@ -1,0 +1,322 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-wrapper">
+    <div class="content">
+        <div class="page-header">
+            <div class="page-title">
+                <h4>Raw Material Transfer Report</h4>
+                <h6>Download and print raw material transfer details</h6>
+            </div>
+        </div>
+
+        <form id="transferForm">
+            <div class="card">
+                <div class="card-body">
+                    <!-- First Row -->
+                    <div class="row">
+                        <!-- Transfer Date -->
+                        <div class="col-lg-3 col-sm-6 col-12">
+                            <div class="form-group">
+                                <label>Transfer Date</label>
+                                <input type="date" name="transfer_date" class="form-control" value="{{ today_date }}"
+                                    required>
+                            </div>
+                        </div>
+                        <!-- Storage Room (Transfer From) -->
+                        <div class="col-lg-3 col-sm-6 col-12">
+                            <div class="form-group">
+                                <label>Transfer From</label>
+                                <select name="storageroom" class="form-control" required>
+                                    <option value="" disabled selected>Select Storage Room</option>
+                                    {% for room in storage_rooms %}
+                                    <option value="{{ room.id }}">{{ room.storageroomname }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Destination Type -->
+                        <div class="col-lg-3 col-sm-6 col-12">
+                            <div class="form-group">
+                                <label>Destination Type</label>
+                                <select name="destination_type" class="form-control" id="destination_type" required>
+                                    <option value="kitchen">Kitchen</option>
+                                    <option value="restaurant">Restaurant</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Destination Name -->
+                        <div class="col-lg-3 col-sm-6 col-12">
+                            <div class="form-group">
+                                <label>Destination Name</label>
+                                <select name="destination_name" class="form-control" id="destination_name" required>
+                                    <!-- Dynamic options will be added here -->
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Transfer ID -->
+                        <div class="col-lg-3 col-sm-6 col-12">
+                            <div class="form-group">
+                                <label>Transfer ID</label>
+                                <select name="transfer_id" class="form-control" id="transfer_id">
+                                    <option value="" disabled selected required>Select Transfer ID</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="row mt-3">
+                        <div class="col-lg-12">
+                            <button type="button" id="fetch_details" class="btn btn-primary">Submit</button>
+                            <button type="button" id="printReport" class="btn btn-secondary" disabled>Print</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table" id="transferTable">
+                    <thead>
+                        <tr>
+                            <th>S.No</th>
+                            {% if transfer_id != "total" %}
+                            <th>Transfer ID</th>
+                            {% endif %}
+                            <th>Raw Material Name</th>
+                            <th>Category</th>
+                            <th>Quantity</th>
+                            <th>Metric</th>
+                            {% if transfer_id != "total" %}
+                            <th>Transfer Time</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody id="transferTableBody"></tbody>
+                </table>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const fetchButton = document.getElementById('fetch_details');
+        const printButton = document.getElementById('printReport');
+        const transferTableBody = document.getElementById('transferTableBody');
+        const destinationTypeSelect = document.getElementById('destination_type');
+        const destinationNameSelect = document.getElementById('destination_name');
+        const transferDateSelect = document.getElementById('transfer_date');
+        const transferIDSelect = document.getElementById('transfer_id');
+        const kitchens = {{ kitchens | tojson
+    }};
+    const restaurants = {{ restaurants | tojson }};
+
+    function updateDestinationNameOptions() {
+        const selectedType = destinationTypeSelect.value;
+        let options = [];
+
+        if (selectedType === 'kitchen') {
+            options = kitchens;
+        } else if (selectedType === 'restaurant') {
+            options = restaurants;
+        }
+
+        destinationNameSelect.innerHTML = '';
+        const defaultOption = document.createElement('option');
+        defaultOption.text = 'Select Destination';
+        defaultOption.disabled = true;
+        defaultOption.selected = true;
+        destinationNameSelect.appendChild(defaultOption);
+
+        options.forEach(option => {
+            const newOption = document.createElement('option');
+            newOption.value = option.id;
+            newOption.textContent = option[`${selectedType}name`];
+            destinationNameSelect.appendChild(newOption);
+        });
+    }
+
+    destinationTypeSelect.addEventListener('change', updateDestinationNameOptions);
+    updateDestinationNameOptions();
+
+    function fetchTransferDetails() {
+        const storageroom = document.querySelector('select[name="storageroom"]').value;
+        const destinationType = document.getElementById('destination_type').value;
+        const destinationName = document.getElementById('destination_name').value;
+        const transferDate = document.querySelector('input[name="transfer_date"]').value;
+        const transferID = document.getElementById('transfer_id').value;
+
+        if (!storageroom || !destinationType || !destinationName || !transferID || !transferDate) {
+            alert("Please fill in all fields.");
+            return;
+        }
+
+        fetch(`/get_transfer_details_report?storageroom=${storageroom}&destination_type=${destinationType}&destination_name=${destinationName}&transfer_date=${transferDate}&transfer_id=${transferID}`)
+            .then(response => response.json())
+            .then(data => {
+                transferTableBody.innerHTML = '';
+
+                let isTotal = (transferID === "total");
+
+                let tableHeadHTML = `
+                <tr>
+                    <th>S.No</th>`;
+                if (!isTotal) {
+                    tableHeadHTML += `<th>Transfer ID</th>`;
+                }
+                tableHeadHTML += `
+                    <th>Raw Material Name</th>
+                    <th>Category</th>
+                    <th>Quantity</th>
+                    <th>Metric</th>`;
+                if (!isTotal) {
+                    tableHeadHTML += `<th>Transfer Time</th>`;
+                }
+                tableHeadHTML += `</tr>`;
+
+                document.querySelector("#transferTable thead").innerHTML = tableHeadHTML;
+
+                data.forEach((transfer, index) => {
+                    let row = `<tr>
+                        <td>${index + 1}</td>`;
+                    if (!isTotal) {
+                        row += `<td>${transfer.transfer_id}</td>`;
+                    }
+                    row += `<td>${transfer.raw_material_name}</td>
+                        <td>${transfer.category}</td>
+                        <td>${isNaN(parseFloat(transfer.quantity)) ? 0 : parseFloat(transfer.quantity).toFixed(2)}</td>
+                        <td>${transfer.metric}</td>`;
+                    if (!isTotal) {
+                        row += `<td>${transfer.transfer_time}</td>`;
+                    }
+                    row += `</tr>`;
+
+                    transferTableBody.insertAdjacentHTML('beforeend', row);
+                });
+
+                printButton.disabled = false;
+            })
+            .catch(error => console.error('Error fetching transfer details:', error));
+    }
+
+    function printTransferReport() {
+        const transferDate = document.querySelector('input[name="transfer_date"]').value;
+        const transferID = document.getElementById('transfer_id').value;
+        let isTotal = (transferID === "total");
+
+        const printContent = `
+        <div style="text-align: left;">
+            <h4 style="text-align: center;">Raw Material Transfer Report</h4>
+            <h2 style="text-align: center;">{{ contact_details.name }}</h2>
+            <p style="text-align: center;">Contact: {{ contact_details.contact_number }}</p>
+            <p style="text-align: center;">Address: {{ contact_details.address }}</p>
+            <p><strong>Transferred From Storage Room:</strong> ${document.querySelector('select[name="storageroom"] option:checked').text}</p>
+            <p><strong>Transferred To Destination Type:</strong> ${destinationTypeSelect.options[destinationTypeSelect.selectedIndex].text}</p>
+            <p><strong>Transferred To Destination Name:</strong> ${destinationNameSelect.options[destinationNameSelect.selectedIndex].text}</p>
+            <p><strong>Transfer Date:</strong> ${transferDate}</p>
+        </div>
+        <table border="1" width="100%" style="border-collapse: collapse; text-align: center;">
+            <thead>
+                <tr>
+                    <th>S.No</th>
+                    ${!isTotal ? '<th>Transfer ID</th>' : ''}
+                    <th>Raw Material Name</th>
+                    <th>Category</th>
+                    <th>Quantity</th>
+                    <th>Metric</th>
+                    ${!isTotal ? '<th>Transfer Time</th>' : ''}
+                </tr>
+            </thead>
+            <tbody>
+                ${transferTableBody.innerHTML}
+            </tbody>
+        </table>
+        <br><br>
+        <div style="display: flex; justify-content: space-between;">
+            <p>Authorized Signature: __________</p>
+            <p>Receiver Signature: __________</p>
+        </div>`;
+
+        let iframe = document.createElement('iframe');
+        iframe.style.position = 'absolute';
+        iframe.style.width = '0px';
+        iframe.style.height = '0px';
+        iframe.style.border = 'none';
+        document.body.appendChild(iframe);
+        let doc = iframe.contentWindow.document;
+        doc.open();
+        doc.write('<html><head></head><body>' + printContent + '</body></html>');
+        doc.close();
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        setTimeout(() => document.body.removeChild(iframe), 1000);
+    }
+
+
+    fetchButton.addEventListener('click', fetchTransferDetails);
+    printButton.addEventListener('click', printTransferReport);
+    });
+    document.addEventListener('DOMContentLoaded', function () {
+        const fetchButton = document.getElementById('fetch_details');
+        const printButton = document.getElementById('printReport');
+        const transferTableBody = document.getElementById('transferTableBody');
+        const destinationTypeSelect = document.getElementById('destination_type');
+        const destinationNameSelect = document.getElementById('destination_name');
+        const transferDateInput = document.querySelector('input[name="transfer_date"]');
+        const storageRoomSelect = document.querySelector('select[name="storageroom"]');
+        const transferIdSelect = document.getElementById('transfer_id');
+
+        const kitchens = {{ kitchens | tojson
+    }};
+    const restaurants = {{ restaurants | tojson }};
+
+    function updateDestinationNameOptions() {
+        const selectedType = destinationTypeSelect.value;
+        let options = selectedType === 'kitchen' ? kitchens : restaurants;
+
+        destinationNameSelect.innerHTML = '<option value="" disabled selected>Select Destination</option>';
+        options.forEach(option => {
+            const newOption = document.createElement('option');
+            newOption.value = option.id;
+            newOption.textContent = option[`${selectedType}name`];
+            destinationNameSelect.appendChild(newOption);
+        });
+    }
+
+    function fetchTransferIds() {
+        const storageRoom = storageRoomSelect.value;
+        const destinationType = destinationTypeSelect.value;
+        const destinationName = destinationNameSelect.value;
+        const transferDate = transferDateInput.value;
+
+        if (!storageRoom || !destinationType || !destinationName || !transferDate) return;
+
+        fetch(`/get_transfer_ids?storageroom=${storageRoom}&destination_type=${destinationType}&destination_name=${destinationName}&transfer_date=${transferDate}`)
+            .then(response => response.json())
+            .then(data => {
+                transferIdSelect.innerHTML = '<option value="" disabled selected>Select Transfer ID</option>';
+                // transferIdSelect.innerHTML += `<option value="total">Total</option>`; // Add "Total" option
+
+
+                // Append fetched transfer IDs
+                data.forEach(transfer => {
+                    transferIdSelect.innerHTML += `<option value="${transfer.transfer_id}">${transfer.transfer_id}</option>`;
+                });
+            })
+            .catch(error => console.error('Error fetching transfer IDs:', error));
+    }
+
+    destinationTypeSelect.addEventListener('change', updateDestinationNameOptions);
+    storageRoomSelect.addEventListener('change', fetchTransferIds);
+    destinationNameSelect.addEventListener('change', fetchTransferIds);
+    transferDateInput.addEventListener('change', fetchTransferIds);
+
+    updateDestinationNameOptions();
+});
+
+</script>
+
+{% endblock %}

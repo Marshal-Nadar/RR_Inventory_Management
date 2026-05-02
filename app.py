@@ -2450,29 +2450,37 @@ def get_vendor_payments():
     vendor_id = request.args.get('vendor_id')
     from_date = request.args.get('from_date')
     to_date = request.args.get('to_date')
-    payment_mode = request.args.get('payment_mode', '')  # ✅ NEW
+    payment_mode = request.args.get('payment_mode', '')
+
+    if not from_date or not to_date:
+        return jsonify({"error": "Missing date parameters"}), 400
 
     try:
-        from_date = datetime.strptime(from_date, '%Y-%m-%d')
-        to_date = datetime.strptime(to_date, '%Y-%m-%d')
+        # Convert to date objects for validation
+        datetime.strptime(from_date, '%Y-%m-%d')
+        datetime.strptime(to_date, '%Y-%m-%d')
     except ValueError:
         return jsonify({"error": "Invalid date format"}), 400
 
-    payments_per_vendor = get_payment_details_of_vendor_between_dates(
-        vendor_id, from_date, to_date, payment_mode  # ✅ pass it down
+    # If vendor_id is not provided or invalid, default to "all"
+    if not vendor_id:
+        vendor_id = "all"
+
+    payments = get_payment_details_of_vendor_between_dates(
+        vendor_id, from_date, to_date, payment_mode
     )
 
     def serialize(payment):
         return {
-            'vendor_name': payment['vendor_name'],  # ✅ NEW
-            'paid_on': payment['paid_on'].strftime('%Y-%m-%d'),
+            'vendor_name': payment['vendor_name'],
+            'paid_on': payment['paid_on'],           # already formatted in query
             'invoice_number': payment['invoice_number'],
             'purchase_date': payment['purchase_date'],
             'mode_of_payment': payment['mode_of_payment'],
             'amount_paid': float(payment['amount_paid'])
         }
 
-    return jsonify({'payments': [serialize(p) for p in payments_per_vendor]})
+    return jsonify({'payments': [serialize(p) for p in payments]})
 
 
 @app.route("/get_payment_details/<vendor_id>", methods=["GET"])
@@ -4127,6 +4135,15 @@ def stock_report():
     return render_template('stock_report.html', user=session["user"], storage_rooms=get_all_storagerooms(only_active=True),
                            restaurants=get_all_restaurants(only_active=True),
                            kitchens=get_all_kitchens(only_active=True), rawmaterial_category=rm_categories, contact_details=contact_details)
+
+@app.route('/transfer_raw_material_report', methods=["GET", "POST"])
+def transfer_raw_material_report():
+    if "user" not in session:
+        return redirect("/login")
+    contact_details = get_contact_details()
+    return render_template('transfer_raw_material_report.html', user=session["user"], storage_rooms=get_all_storagerooms(only_active=True),
+                           restaurants=get_all_restaurants(only_active=True),
+                           kitchens=get_all_kitchens(only_active=True), contact_details=contact_details)
 
 @app.route('/get_transfer_details_report', methods=["GET"])
 def get_transfer_details():
